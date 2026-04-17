@@ -1,22 +1,1312 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Content Block Search — MoEngage Tools</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0a0a0a; color: #f5f5f5; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px; }
-    h1 { font-size: 24px; color: #fff; margin-bottom: 12px; }
-    p { color: #666; font-size: 15px; margin-bottom: 24px; }
-    .badge { display: inline-block; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 10px 20px; font-size: 13px; color: #e20074; }
-    a { color: #e20074; text-decoration: none; margin-top: 24px; display: inline-block; font-size: 13px; }
-    a:hover { text-decoration: underline; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MoEngage Search</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:        #0d0f12;
+    --surface:   #141720;
+    --border:    #252a35;
+    --border-hi: #3a4155;
+    --accent:    #00d4a8;
+    --text:      #e2e8f0;
+    --muted:     #6b7690;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: 14px;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+
+  /* ── Header ─────────────────────────────────── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 15px 28px;
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); flex-shrink: 0;
+  }
+  .logo {
+    width: 28px; height: 28px; background: var(--accent);
+    border-radius: 5px; display: flex; align-items: center; justify-content: center;
+  }
+  .logo svg { width: 15px; height: 15px; }
+  header h1 { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: .03em; }
+  header h1 span { color: var(--muted); font-weight: 400; }
+
+  /* ── Layout ──────────────────────────────────── */
+  .layout {
+    display: grid; grid-template-columns: 280px 1fr;
+    flex: 1; overflow: hidden; height: calc(100vh - 52px);
+  }
+
+  /* ── Sidebar ─────────────────────────────────── */
+  .sidebar {
+    background: var(--surface); border-right: 1px solid var(--border);
+    padding: 22px 18px; display: flex; flex-direction: column;
+    gap: 18px; overflow-y: auto;
+  }
+
+  .section-label {
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 11px; font-weight: 500; color: var(--muted); }
+  .field input, .field select {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text);
+    font-family: var(--mono); font-size: 12px;
+    padding: 8px 10px; outline: none; transition: border-color .15s; width: 100%;
+  }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+  .field select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7690'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; cursor: pointer; }
+
+  .divider { border: none; border-top: 1px solid var(--border); }
+
+  /* ── Mode Tabs ───────────────────────────────── */
+  .mode-tabs {
+    display: flex; gap: 0; border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden;
+  }
+  .mode-tab {
+    flex: 1; padding: 8px 6px;
+    background: transparent; border: none; color: var(--muted);
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    cursor: pointer; transition: background .15s, color .15s;
+    letter-spacing: .02em;
+  }
+  .mode-tab:first-child { border-right: 1px solid var(--border); }
+  .mode-tab.active { background: var(--accent); color: #0d0f12; font-weight: 700; }
+  .mode-tab:not(.active):hover { background: var(--border); color: var(--text); }
+
+  /* ── Channel Checkboxes ──────────────────────── */
+  .channel-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+  .channel-chip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 5px; cursor: pointer; user-select: none;
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    color: var(--muted); transition: border-color .15s, color .15s, background .15s;
+    flex: 1; justify-content: center;
+  }
+  .channel-chip input[type=checkbox] { display: none; }
+  .channel-chip.checked-email { border-color: #4f9cf9; color: #4f9cf9; background: #4f9cf910; }
+  .channel-chip.checked-sms   { border-color: #a78bfa; color: #a78bfa; background: #a78bfa10; }
+  .channel-chip.checked-push  { border-color: #fb923c; color: #fb923c; background: #fb923c10; }
+
+  /* ── Toggles ─────────────────────────────────── */
+  .toggle-row {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: var(--muted); cursor: pointer; user-select: none;
+  }
+  .toggle {
+    width: 28px; height: 16px; background: var(--border-hi);
+    border-radius: 8px; position: relative; transition: background .2s; flex-shrink: 0;
+  }
+  .toggle::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 12px; height: 12px; background: #fff;
+    border-radius: 50%; transition: transform .2s;
+  }
+  input[type=checkbox].toggle-input { display: none; }
+  input[type=checkbox].toggle-input:checked + .toggle { background: var(--accent); }
+  input[type=checkbox].toggle-input:checked + .toggle::after { transform: translateX(12px); }
+
+  .run-btn {
+    background: var(--accent); color: #0d0f12;
+    border: none; border-radius: 6px;
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    padding: 11px; cursor: pointer;
+    transition: opacity .15s, transform .1s;
+    width: 100%; letter-spacing: .04em;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .run-btn:hover { opacity: .87; }
+  .run-btn:active { transform: scale(.98); }
+  .run-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+  .toast {
+    display: none; padding: 9px 11px; border-radius: 5px;
+    font-size: 11px; font-family: var(--mono); line-height: 1.6; border: 1px solid;
+  }
+  .toast.error { background: #ff5f5710; border-color: #ff5f5740; color: #ff9c97; display: block; }
+  .toast.warn  { background: #f5a62310; border-color: #f5a62340; color: #f5c86a; display: block; }
+
+  /* ── Results area ────────────────────────────── */
+  .results-area { display: flex; flex-direction: column; overflow: hidden; }
+
+  .results-topbar {
+    padding: 12px 22px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0; gap: 10px;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 10px; }
+  .topbar-left h2 { font-family: var(--mono); font-size: 12px; font-weight: 500; }
+
+  .badge {
+    background: var(--accent); color: #0d0f12;
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 100px;
+  }
+  .badge.zero { background: var(--border-hi); color: var(--muted); }
+
+  .stats-text { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+  .export-btn {
+    background: transparent; border: 1px solid var(--border-hi);
+    color: var(--muted); border-radius: 4px;
+    font-family: var(--mono); font-size: 11px;
+    padding: 4px 10px; cursor: pointer;
+    transition: border-color .15s, color .15s;
+  }
+  .export-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* progress */
+  .progress-wrap { display: none; flex-direction: column; gap: 5px; padding: 9px 22px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+  .progress-wrap.visible { display: flex; }
+  .progress-info { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .progress-bar-bg { height: 2px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .3s; width: 0%; }
+
+  /* table scroll area */
+  .table-wrap { flex: 1; overflow: auto; }
+  .table-wrap::-webkit-scrollbar { width: 5px; height: 5px; }
+  .table-wrap::-webkit-scrollbar-track { background: transparent; }
+  .table-wrap::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+
+  /* empty state */
+  .state-empty {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 10px;
+    color: var(--muted); font-family: var(--mono); font-size: 12px;
+    text-align: center; padding: 80px 20px; height: 100%;
+  }
+  .state-empty .icon { font-size: 30px; opacity: .2; }
+
+  /* table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+  thead { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+  thead th {
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    padding: 11px 16px; text-align: left;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  tbody tr:hover { background: #1a1f2e; }
+  tbody tr:last-child { border-bottom: none; }
+
+  td { padding: 11px 16px; vertical-align: top; }
+
+  /* Content Block columns */
+  .col-id   { width: 210px; min-width: 180px; }
+  .col-name { width: 200px; min-width: 150px; }
+  .col-content { }
+
+  /* Campaign columns */
+  .col-cname  { width: 200px; min-width: 160px; }
+  .col-cid    { width: 190px; min-width: 160px; }
+  .col-ch     { width: 80px; min-width: 70px; }
+  .col-status { width: 90px; min-width: 80px; }
+  .col-source { width: 130px; min-width: 110px; }
+  .col-mfield { width: 130px; min-width: 110px; }
+  .col-snippet { }
+
+  .cell-id   { font-family: var(--mono); font-size: 11px; color: var(--muted); word-break: break-all; }
+  .cell-name { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent); word-break: break-word; }
+  .cell-content { font-family: var(--mono); font-size: 11px; color: #9babc7; line-height: 1.7; word-break: break-word; }
+  .cell-content mark { background: #00d4a820; color: var(--accent); border-radius: 2px; padding: 0 2px; font-weight: 700; }
+
+  /* Campaign-specific cell styles */
+  .cell-cname { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent); word-break: break-word; }
+  .cell-cid   { font-family: var(--mono); font-size: 11px; color: var(--muted); word-break: break-all; }
+
+  .ch-badge {
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    padding: 2px 7px; border-radius: 4px; white-space: nowrap; display: inline-block;
+  }
+  .ch-EMAIL { background: #4f9cf915; color: #4f9cf9; border: 1px solid #4f9cf940; }
+  .ch-SMS   { background: #a78bfa15; color: #a78bfa; border: 1px solid #a78bfa40; }
+  .ch-PUSH  { background: #fb923c15; color: #fb923c; border: 1px solid #fb923c40; }
+
+  .status-badge {
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    padding: 2px 7px; border-radius: 4px; white-space: nowrap; display: inline-block;
+  }
+  .st-Active  { background: #22c55e15; color: #4ade80; border: 1px solid #22c55e40; }
+  .st-Sending { background: #38bdf815; color: #7dd3fc; border: 1px solid #38bdf840; }
+  .st-Sent    { background: #94a3b815; color: #94a3b8; border: 1px solid #94a3b840; }
+  .st-Expired { background: #f9731615; color: #fb923c; border: 1px solid #f9731640; }
+  .st-Draft   { background: #f5a62315; color: #fbbf24; border: 1px solid #f5a62340; }
+  .st-other   { background: var(--border); color: var(--muted); }
+
+  .source-badge {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--muted); word-break: break-word; line-height: 1.5;
+  }
+  .source-badge .src-type {
+    font-size: 9px; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--border-hi);
+    display: block; margin-bottom: 2px;
+  }
+
+  .mfield-badge {
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    padding: 2px 7px; border-radius: 4px; white-space: nowrap; display: inline-block;
+    background: #00d4a815; color: var(--accent); border: 1px solid #00d4a840;
+    margin-bottom: 2px;
+  }
+
+  .no-result-row td { text-align: center; color: var(--muted); font-family: var(--mono); font-size: 12px; padding: 60px; }
+</style>
 </head>
 <body>
-  <h1>Content Block Search</h1>
-  <p>Find specific text within MoEngage content blocks.</p>
-  <div class="badge">⚙️ Replace this file with your utility HTML</div>
-  <br/><a href="/">← Back to Dashboard</a>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 16 16" fill="none">
+      <rect x="1" y="1" width="6" height="6" rx="1" fill="#0d0f12"/>
+      <rect x="9" y="1" width="6" height="6" rx="1" fill="#0d0f12"/>
+      <rect x="1" y="9" width="6" height="6" rx="1" fill="#0d0f12"/>
+      <circle cx="12" cy="12" r="3" fill="#0d0f12"/>
+    </svg>
+  </div>
+  <h1>MoEngage Search <span>// Content Blocks &amp; Campaigns</span></h1>
+</header>
+
+<div class="layout">
+
+  <!-- ── Sidebar ───────────────────────── -->
+  <aside class="sidebar">
+
+    <!-- Authentication (shared) -->
+    <div>
+      <p class="section-label">Authentication</p>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div class="field">
+          <label>Username (App ID)</label>
+          <input id="basicUser" type="text" placeholder="your-app-id" autocomplete="username" />
+        </div>
+        <div class="field">
+          <label>Password (API Key)</label>
+          <input id="basicPass" type="password" placeholder="your-api-key" autocomplete="current-password" />
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- Mode selector -->
+    <div>
+      <p class="section-label">Search Mode</p>
+      <div class="mode-tabs">
+        <button class="mode-tab active" id="tabContentBlock" onclick="setMode('content_block')">Content Blocks</button>
+        <button class="mode-tab"        id="tabCampaigns"    onclick="setMode('campaigns')">Campaigns</button>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- Search terms (shared) -->
+    <div>
+      <p class="section-label">Search</p>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div id="searchTermsContainer" style="display:flex;flex-direction:column;gap:6px;">
+          <div class="search-term-row" style="display:flex;gap:5px;align-items:center;">
+            <input type="text" class="search-term-input" placeholder="e.g. AutoPay, unsubscribe…"
+              style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 10px;outline:none;transition:border-color .15s;"
+              onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" />
+            <button onclick="addSearchTerm()" title="Add search term"
+              style="width:26px;height:26px;flex-shrink:0;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--accent);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;">+</button>
+          </div>
+        </div>
+        <label class="toggle-row">
+          <input type="checkbox" class="toggle-input" id="caseToggle" checked />
+          <span class="toggle"></span>
+          Case-insensitive
+        </label>
+      </div>
+    </div>
+
+    <!-- Content Block options -->
+    <div id="sectionContentBlock">
+      <label class="toggle-row">
+        <input type="checkbox" class="toggle-input" id="metaToggle" checked />
+        <span class="toggle"></span>
+        Also search name &amp; description
+      </label>
+    </div>
+
+    <!-- Campaign options -->
+    <div id="sectionCampaigns" style="display:none;">
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <p class="section-label">Channels</p>
+          <div class="channel-grid">
+            <label class="channel-chip checked-email" id="chipEmail">
+              <input type="checkbox" id="chEmail" checked onchange="updateChip(this,'email')" />
+              ✉ EMAIL
+            </label>
+            <label class="channel-chip checked-sms" id="chipSms">
+              <input type="checkbox" id="chSms" checked onchange="updateChip(this,'sms')" />
+              💬 SMS
+            </label>
+            <label class="channel-chip checked-push" id="chipPush">
+              <input type="checkbox" id="chPush" checked onchange="updateChip(this,'push')" />
+              🔔 PUSH
+            </label>
+          </div>
+        </div>
+        <label class="toggle-row">
+          <input type="checkbox" class="toggle-input" id="nameToggle" checked />
+          <span class="toggle"></span>
+          Also search campaign name
+        </label>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <div id="toastBox"></div>
+
+    <button class="run-btn" id="searchBtn" onclick="runSearch()">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+        <circle cx="5.5" cy="5.5" r="4" stroke="#0d0f12" stroke-width="1.8"/>
+        <line x1="8.7" y1="8.7" x2="12" y2="12" stroke="#0d0f12" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      Run Search
+    </button>
+
+    <button id="stopBtn" onclick="stopSearch()" style="display:none;background:transparent;border:1px solid #ff5f5740;color:#ff9c97;border-radius:5px;font-family:var(--mono);font-size:12px;font-weight:600;padding:9px;cursor:pointer;width:100%;letter-spacing:.04em;transition:border-color .15s,background .15s;">
+      &#9632; Stop Search
+    </button>
+
+    <button id="debugToggleBtn" onclick="toggleDebug()" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:5px;font-family:var(--mono);font-size:11px;padding:7px;cursor:pointer;width:100%;letter-spacing:.03em;">
+      Show Debug Info
+    </button>
+
+  </aside>
+
+  <!-- ── Results ──────────────────── -->
+  <section class="results-area">
+
+    <div class="results-topbar">
+      <div class="topbar-left">
+        <h2>Results</h2>
+        <span id="matchBadge" class="badge zero" style="display:none;"></span>
+        <span id="statsText" class="stats-text"></span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="export-btn" id="scannedToggleBtn" style="display:none;" onclick="toggleScanned()">Scanned (0)</button>
+        <button class="export-btn" id="exportCsvBtn"  style="display:none;" onclick="exportCSV()">Export CSV</button>
+        <button class="export-btn" id="exportJsonBtn" style="display:none;" onclick="exportJSON()">Export JSON</button>
+      </div>
+    </div>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-info">
+        <span id="progressLabel">Starting…</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+    </div>
+
+    <!-- Debug panel (hidden by default) -->
+    <div id="debugPanel" style="display:none;padding:14px 22px;border-bottom:1px solid var(--border);background:#0a0c0f;overflow-y:auto;max-height:45vh;"></div>
+
+    <!-- Scanned list panel (hidden by default) -->
+    <div id="scannedPanel" style="display:none;border-bottom:1px solid var(--border);overflow-y:auto;max-height:40vh;"></div>
+
+    <div class="table-wrap" id="tableWrap">
+      <div class="state-empty">
+        <div class="icon">⌕</div>
+        Enter credentials and a search term,<br/>
+        then hit <strong style="color:var(--text);">Run Search</strong>.
+      </div>
+    </div>
+
+  </section>
+</div>
+
+<script>
+  /* ─────────────────────────────────────────────────────────────
+     API endpoints (served via proxy.js)
+  ───────────────────────────────────────────────────────────── */
+  const API_SEARCH     = '/proxy';
+  const API_GET_IDS    = '/proxy-get-ids';
+  const API_CAMPAIGNS  = '/proxy-campaigns';
+
+  let lastResults  = [];
+  let lastScanned  = [];
+  let stopRequested = false;
+  let currentMode  = 'content_block';
+  let debugVisible = false;
+
+  function toggleDebug() {
+    debugVisible = !debugVisible;
+    const panel = document.getElementById('debugPanel');
+    const btn   = document.getElementById('debugToggleBtn');
+    panel.style.display = debugVisible ? 'block' : 'none';
+    btn.textContent     = debugVisible ? 'Hide Debug Info' : 'Show Debug Info';
+    btn.style.borderColor = debugVisible ? 'var(--accent)' : 'var(--border)';
+    btn.style.color       = debugVisible ? 'var(--accent)' : 'var(--muted)';
+    if (debugVisible) renderDebugPanel();
+  }
+
+  /* ── Mode switching ─────────────────────────────────────────── */
+  function setMode(mode) {
+    currentMode = mode;
+    document.getElementById('tabContentBlock').classList.toggle('active', mode === 'content_block');
+    document.getElementById('tabCampaigns').classList.toggle('active',    mode === 'campaigns');
+    document.getElementById('sectionContentBlock').style.display = mode === 'content_block' ? 'block' : 'none';
+    document.getElementById('sectionCampaigns').style.display    = mode === 'campaigns'     ? 'block' : 'none';
+    // Clear results when switching
+    document.getElementById('tableWrap').innerHTML = `<div class="state-empty"><div class="icon">⌕</div>Enter credentials and a search term,<br/>then hit <strong style="color:var(--text);">Run Search</strong>.</div>`;
+    document.getElementById('matchBadge').style.display         = 'none';
+    document.getElementById('exportCsvBtn').style.display       = 'none';
+    document.getElementById('exportJsonBtn').style.display      = 'none';
+    document.getElementById('scannedToggleBtn').style.display   = 'none';
+    document.getElementById('scannedPanel').style.display       = 'none';
+    document.getElementById('statsText').textContent            = '';
+    clearToast();
+    lastResults = [];
+    lastScanned = [];
+  }
+
+  /* ── Channel chip toggling ─────────────────────────────────── */
+  function updateChip(checkbox, channel) {
+    const chipMap = { email: 'chipEmail', sms: 'chipSms', push: 'chipPush' };
+    const classMap = { email: 'checked-email', sms: 'checked-sms', push: 'checked-push' };
+    const chip = document.getElementById(chipMap[channel]);
+    if (checkbox.checked) {
+      chip.classList.add(classMap[channel]);
+    } else {
+      chip.classList.remove(classMap[channel]);
+    }
+  }
+
+  /* ── Auth headers ──────────────────────────────────────────── */
+  function buildHeaders() {
+    const user = document.getElementById('basicUser').value.trim();
+    const pass = document.getElementById('basicPass').value.trim();
+    const h = { 'Content-Type': 'application/json' };
+    if (user) {
+      h['Authorization'] = 'Basic ' + btoa(user + ':' + pass);
+      h['MOE-APPKEY']    = user;
+    }
+    return h;
+  }
+
+  /* ── UI helpers ────────────────────────────────────────────── */
+  function setProgress(pct, label) {
+    document.getElementById('progressFill').style.width  = pct + '%';
+    document.getElementById('progressPct').textContent   = Math.round(pct) + '%';
+    document.getElementById('progressLabel').textContent = label;
+  }
+  function showToast(msg, type = 'error') {
+    document.getElementById('toastBox').innerHTML = `<div class="toast ${type}">${msg}</div>`;
+  }
+  function clearToast() { document.getElementById('toastBox').innerHTML = ''; }
+
+  function escapeHTML(s) {
+    return String(s ?? '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function getSnippet(text, term, ci, win = 150) {
+    const re  = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), ci ? 'i' : '');
+    const m   = text.match(re);
+    if (!m) return text.slice(0, win * 2).replace(/\s+/g,' ').trim();
+    const idx = text.indexOf(m[0]);
+    const s   = Math.max(0, idx - win);
+    const e   = Math.min(text.length, idx + m[0].length + win);
+    return (s > 0 ? '…' : '') + text.slice(s, e).replace(/\s+/g,' ').trim() + (e < text.length ? '…' : '');
+  }
+
+  function highlightSnippet(snippet, term, ci) {
+    const flags  = ci ? 'gi' : 'g';
+    const safeRe = escapeHTML(term).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    return escapeHTML(snippet).replace(new RegExp(safeRe, flags), m => `<mark>${m}</mark>`);
+  }
+
+  /* ── Multi-term helpers ───────────────────────────────────────── */
+  function addSearchTerm() {
+    const container = document.getElementById('searchTermsContainer');
+    const row = document.createElement('div');
+    row.className = 'search-term-row';
+    row.style.cssText = 'display:flex;gap:5px;align-items:center;';
+    row.innerHTML = `
+      <input type="text" class="search-term-input" placeholder="additional term…"
+        style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 10px;outline:none;transition:border-color .15s;"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" />
+      <button onclick="removeSearchTerm(this)" title="Remove"
+        style="width:26px;height:26px;flex-shrink:0;background:transparent;border:1px solid var(--border);border-radius:4px;color:#ff9c97;font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;">−</button>`;
+    container.appendChild(row);
+  }
+
+  function removeSearchTerm(btn) {
+    btn.closest('.search-term-row').remove();
+  }
+
+  function getSearchTerms() {
+    return Array.from(document.querySelectorAll('.search-term-input'))
+      .map(i => i.value.trim())
+      .filter(v => v.length > 0);
+  }
+
+  /* ── Dispatch ──────────────────────────────────────────────── */
+  async function runSearch() {
+    if (currentMode === 'content_block') {
+      await runContentBlockSearch();
+    } else {
+      await runCampaignSearch();
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     CONTENT BLOCK SEARCH  (original logic)
+  ══════════════════════════════════════════════════════════════ */
+  async function runContentBlockSearch() {
+    clearToast();
+    const terms = getSearchTerms();
+    const caseI = document.getElementById('caseToggle').checked;
+    const meta  = document.getElementById('metaToggle').checked;
+    if (!terms.length) { showToast('Please enter at least one search term.'); return; }
+    const flags = caseI ? 'i' : '';
+    const regexes = terms.map(t => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), flags));
+
+    const btn = document.getElementById('searchBtn');
+    btn.disabled = true;
+    btn.innerHTML = spinnerHTML('Working…');
+
+    document.getElementById('progressWrap').classList.add('visible');
+    document.getElementById('tableWrap').innerHTML = '';
+    document.getElementById('matchBadge').style.display    = 'none';
+    document.getElementById('exportCsvBtn').style.display  = 'none';
+    document.getElementById('exportJsonBtn').style.display = 'none';
+    document.getElementById('statsText').textContent       = '';
+    lastResults = [];
+
+    setProgress(10, 'Step 1 / 2 — Fetching block list…');
+    let metaBlocks;
+    try {
+      const r = await fetch(API_SEARCH, {
+        method: 'POST', headers: buildHeaders(),
+        body: JSON.stringify({ filters: {} })
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+      const json = await r.json();
+      metaBlocks = json.data;
+      if (!Array.isArray(metaBlocks)) throw new Error('"data" is not an array in /search response.');
+    } catch(e) {
+      showToast(`Step 1 failed: ${e.message}`);
+      reset(btn); return;
+    }
+
+    setProgress(40, `Step 2 / 2 — Fetching content for ${metaBlocks.length} blocks…`);
+    const ids = metaBlocks.map(b => b.id);
+    let contentBlocks;
+    try {
+      const r = await fetch(API_GET_IDS, {
+        method: 'POST', headers: buildHeaders(),
+        body: JSON.stringify({ ids, is_raw_content_required: true })
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+      const json = await r.json();
+      contentBlocks = json.data;
+      if (!Array.isArray(contentBlocks)) throw new Error('"data" is not an array in /get-by-ids response.');
+    } catch(e) {
+      showToast(`Step 2 failed: ${e.message}`);
+      reset(btn); return;
+    }
+
+    setProgress(80, `Searching through ${contentBlocks.length} blocks…`);
+    const metaMap = Object.fromEntries(metaBlocks.map(b => [b.id, b]));
+
+    const matches = [];
+    for (const block of contentBlocks) {
+      const rawContent = block.raw_content || block.content || '';
+      const metaInfo   = metaMap[block.id] || {};
+      const name       = block.name || metaInfo.name || '';
+      const searchParts = [rawContent];
+      if (meta) {
+        if (name)                                       searchParts.push(name);
+        if (block.description || metaInfo.description) searchParts.push(block.description || metaInfo.description || '');
+      }
+      const combined = searchParts.join('\n');
+      const matchedTerms = terms.filter(t => regexes[terms.indexOf(t)].test(combined));
+      if (matchedTerms.length > 0) {
+        matches.push({ id: block.id, name, content: rawContent, matchedTerms });
+      }
+    }
+
+    setProgress(100, 'Done');
+    lastResults = matches;
+    document.getElementById('statsText').textContent = `${contentBlocks.length} blocks scanned`;
+    showBadge(matches.length);
+    renderBlockTable(matches, terms, caseI);
+    reset(btn);
+  }
+
+  function renderBlockTable(matches, terms, caseI) {
+    const wrap = document.getElementById('tableWrap');
+    if (matches.length === 0) {
+      wrap.innerHTML = `<div class="state-empty"><div class="icon">∅</div>No blocks found containing <strong style="color:var(--text);">"${escapeHTML(terms.join('", "'))}"</strong></div>`;
+      return;
+    }
+    const rows = matches.map(b => {
+      const plain = b.content.replace(/<[^>]*>/g,' ').replace(/&[a-z#0-9]+;/gi,' ').replace(/\s+/g,' ').trim();
+      // Show a snippet per matched term
+      const snippets = b.matchedTerms.map(t => {
+        const snip = getSnippet(plain, t, caseI);
+        return highlightSnippet(snip, t, caseI);
+      }).join('<br/><span style="color:var(--border-hi);font-size:10px;">───</span><br/>');
+      const termBadges = b.matchedTerms.map(t =>
+        `<span style="background:var(--border);padding:1px 5px;border-radius:3px;font-size:9px;margin-right:3px;">${escapeHTML(t)}</span>`
+      ).join('');
+      return `<tr>
+        <td class="col-id"><div class="cell-id">${escapeHTML(b.id)}</div></td>
+        <td class="col-name"><div class="cell-name">${escapeHTML(b.name)}<br/><div style="margin-top:4px;">${termBadges}</div></div></td>
+        <td class="col-content"><div class="cell-content">${snippets}</div></td>
+      </tr>`;
+    }).join('');
+    wrap.innerHTML = `
+      <table>
+        <thead><tr>
+          <th class="col-id">Block ID</th>
+          <th class="col-name">Name / Matched Terms</th>
+          <th class="col-content">Content (matched snippets)</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     CAMPAIGN SEARCH
+  ══════════════════════════════════════════════════════════════ */
+
+  /* Build content parts to search per channel */
+  // ── Debug log ──────────────────────────────────────────────────
+  let debugLog = { pages: [], extracted: [] };
+
+
+  function renderDebugPanel() {
+    const el = document.getElementById('debugPanel');
+    if (!el || el.style.display === 'none') return;
+
+    const pageRows = debugLog.pages.map(p => {
+      const stopTag = p.stoppedEarly
+        ? `<span style="background:#f5a62320;color:#f5c86a;border:1px solid #f5a62340;font-size:9px;padding:1px 6px;border-radius:3px;margin-left:6px;">early stop</span>`
+        : '';
+      const returnedStr  = p.returned === null ? '—' : p.returned;
+      const returnedColor = (p.returned !== null && p.returned < 15) ? '#f5c86a' : 'var(--text)';
+
+      // Raw response shape summary
+      let shapeSummary = '';
+      if (p.rawResponseType === 'array') {
+        shapeSummary = `root array → length ${p.rawResponseLength}`;
+      } else if (p.rawResponseKeys) {
+        const keySummary = p.rawResponseKeys.map(k => escapeHTML(k)).join(', ');
+        const arrSummary = (p.rawResponseArrayKeys || []).join(', ') || 'none';
+        shapeSummary = `object keys: [${keySummary}] | arrays: [${arrSummary}]`;
+      }
+      const parsedKey = p.parsedArrayKey ? `parsed from: <strong>${escapeHTML(p.parsedArrayKey)}</strong>` : '';
+
+      return `<tr>
+        <td style="padding:5px 10px;font-family:var(--mono);font-size:11px;color:var(--accent);">Page ${p.page}${stopTag}</td>
+        <td style="padding:5px 10px;font-family:var(--mono);font-size:11px;color:var(--muted);">${escapeHTML(p.request.request_id)}</td>
+        <td style="padding:5px 10px;font-family:var(--mono);font-size:11px;text-align:right;color:${returnedColor};">${returnedStr}</td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding:0 10px 8px;">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding:4px 0 3px;">${shapeSummary}${parsedKey ? ' &nbsp;|&nbsp; ' + parsedKey : ''}</div>
+          <pre style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px;font-size:9px;color:#6b7690;white-space:pre-wrap;word-break:break-all;margin:0;">${escapeHTML(JSON.stringify(p.request, null, 2))}</pre>
+        </td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div style="margin-bottom:14px;">
+        <div class="section-label" style="margin-bottom:6px;">API calls (${debugLog.pages.length} page${debugLog.pages.length !== 1 ? 's' : ''})</div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:5px;overflow:hidden;">
+          <thead>
+            <tr style="background:var(--border);">
+              <th style="padding:5px 10px;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;">Page</th>
+              <th style="padding:5px 10px;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;">Request ID</th>
+              <th style="padding:5px 10px;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:right;">Returned</th>
+            </tr>
+          </thead>
+          <tbody>${pageRows}</tbody>
+        </table>
+      </div>
+      <div>
+        <div class="section-label" style="margin-bottom:6px;">Campaigns extracted (${debugLog.extracted.length})</div>
+        <div style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;">
+          ${debugLog.extracted.map(e => `
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 8px;">
+              <div style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-bottom:3px;">${escapeHTML(e.name || e.campaign_id)}</div>
+              <div style="font-family:var(--mono);font-size:9px;color:var(--muted);">Fields searched: ${e.fields.length ? e.fields.map(f => `<span style="background:var(--border);padding:1px 5px;border-radius:3px;margin-right:3px;">${escapeHTML(f)}</span>`).join('') : '<em>none extracted</em>'}</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  // ── Content extraction (all known fields per channel) ──────────
+  function extractPushPlatformParts(data, label) {
+    const parts = [];
+    if (!data) return parts;
+    const bd = data.basic_details;
+    if (bd) {
+      if (bd.title)        parts.push({ field: `${label} Title`,        text: bd.title });
+      if (bd.message)      parts.push({ field: `${label} Body`,         text: bd.message });
+      if (bd.summary)      parts.push({ field: `${label} Summary`,      text: bd.summary });
+      if (bd.redirect_url) parts.push({ field: `${label} Redirect URL`, text: bd.redirect_url });
+    }
+    // Buttons: android uses btn_name, web uses title, some use text
+    const buttons = data.buttons || [];
+    buttons.forEach((btn, i) => {
+      const btnText = btn.title || btn.btn_name || btn.text;
+      if (btnText) parts.push({ field: `${label} Button ${i+1}`, text: btnText });
+    });
+    return parts;
+  }
+
+  // ── Per-locale email extractor ────────────────────────────────
+  function extractEmailParts(email, locale) {
+    const parts  = [];
+    const prefix = locale ? `[${locale}] ` : '';
+    if (!email || typeof email !== 'object') return parts;
+    if (email.subject)      parts.push({ field: `${prefix}Subject`,      text: email.subject });
+    if (email.preview_text) parts.push({ field: `${prefix}Preview Text`, text: email.preview_text });
+    if (email.sender_name)  parts.push({ field: `${prefix}Sender Name`,  text: email.sender_name });
+    if (email.from_address) parts.push({ field: `${prefix}From Address`, text: email.from_address });
+    if (email.html_content) {
+      const stripped = email.html_content
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<!--[\s\S]*?-->/g, ' ')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&[a-z#0-9]+;/gi, ' ')
+        .replace(/\s+/g, ' ').trim();
+      parts.push({ field: `${prefix}Body`, text: stripped });
+    }
+    return parts;
+  }
+
+  // ── Per-locale SMS extractor ───────────────────────────────────
+  function extractSmsParts(sms, locale) {
+    const parts  = [];
+    const prefix = locale ? `[${locale}] ` : '';
+    if (!sms || typeof sms !== 'object') return parts;
+    if (sms.message) parts.push({ field: `${prefix}Body`, text: sms.message });
+    return parts;
+  }
+
+  // ── Per-locale Push extractor ─────────────────────────────────
+  function extractPushNode(push, localePrefix) {
+    const parts = [];
+    if (!push || typeof push !== 'object') return parts;
+    // Single-variation: push.android / push.ios / push.web
+    if (push.android || push.ios || push.web) {
+      parts.push(...extractPushPlatformParts(push.android, `${localePrefix}Android`));
+      parts.push(...extractPushPlatformParts(push.ios,     `${localePrefix}iOS`));
+      parts.push(...extractPushPlatformParts(push.web,     `${localePrefix}Web`));
+    } else {
+      // A/B variations nested inside push node
+      const varKeys = Object.keys(push).filter(k => k.startsWith('variation_'));
+      for (const varKey of varKeys) {
+        const vp = push[varKey]?.push || push[varKey];
+        if (!vp) continue;
+        parts.push(...extractPushPlatformParts(vp.android, `${localePrefix}${varKey} Android`));
+        parts.push(...extractPushPlatformParts(vp.ios,     `${localePrefix}${varKey} iOS`));
+        parts.push(...extractPushPlatformParts(vp.web,     `${localePrefix}${varKey} Web`));
+      }
+    }
+    return parts;
+  }
+
+  function extractCampaignSearchParts(campaign) {
+    const channel = campaign.channel;
+    const content = campaign.campaign_content?.content || {};
+    const parts   = [];
+
+    // Walk every key in content.
+    // Keys can be:
+    //   - the channel name directly  ("email", "sms", "push")
+    //   - a locale name              ("Spanish", "default", …)  → value is { email:{…} } or { sms:{…} } etc.
+    //   - a variation name           ("variation_1", …)         → handled inside extractPushNode
+    for (const [key, val] of Object.entries(content)) {
+      if (!val || typeof val !== 'object') continue;
+
+      if (channel === 'EMAIL') {
+        if (key === 'email') {
+          parts.push(...extractEmailParts(val, ''));
+        } else if (val.email && typeof val.email === 'object') {
+          parts.push(...extractEmailParts(val.email, key));
+        }
+
+      } else if (channel === 'SMS') {
+        if (key === 'sms') {
+          parts.push(...extractSmsParts(val, ''));
+        } else if (val.sms && typeof val.sms === 'object') {
+          parts.push(...extractSmsParts(val.sms, key));
+        }
+
+      } else if (channel === 'PUSH') {
+        if (key === 'push') {
+          parts.push(...extractPushNode(val, ''));
+        } else if (val.push && typeof val.push === 'object') {
+          parts.push(...extractPushNode(val.push, `[${key}] `));
+        } else if (key.startsWith('variation_')) {
+          const vp = val?.push;
+          if (vp) {
+            parts.push(...extractPushPlatformParts(vp.android, `${key} Android`));
+            parts.push(...extractPushPlatformParts(vp.ios,     `${key} iOS`));
+            parts.push(...extractPushPlatformParts(vp.web,     `${key} Web`));
+          }
+        }
+      }
+    }
+
+    return parts;
+  }
+
+  async function runCampaignSearch() {
+    clearToast();
+    const terms   = getSearchTerms();
+    const caseI   = document.getElementById('caseToggle').checked;
+    const inclName = document.getElementById('nameToggle').checked;
+
+    if (!terms.length) { showToast('Please enter at least one search term.'); return; }
+    const campFlags   = caseI ? 'i' : '';
+    const campRegexes = terms.map(t => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), campFlags));
+
+    const channels = [];
+    if (document.getElementById('chEmail').checked) channels.push('EMAIL');
+    if (document.getElementById('chSms').checked)   channels.push('SMS');
+    if (document.getElementById('chPush').checked)  channels.push('PUSH');
+
+    if (channels.length === 0) {
+      showToast('Select at least one channel.'); return;
+    }
+
+    const btn = document.getElementById('searchBtn');
+    btn.disabled = true;
+    btn.innerHTML = spinnerHTML('Working…');
+
+    document.getElementById('progressWrap').classList.add('visible');
+    document.getElementById('tableWrap').innerHTML = '';
+    document.getElementById('matchBadge').style.display    = 'none';
+    document.getElementById('exportCsvBtn').style.display  = 'none';
+    document.getElementById('exportJsonBtn').style.display = 'none';
+    document.getElementById('statsText').textContent       = '';
+
+    stopRequested = false;
+    lastResults   = [];
+    lastScanned   = [];
+    document.getElementById('stopBtn').style.display    = 'inline-block';
+    document.getElementById('stopBtn').textContent      = '■ Stop Search';
+    document.getElementById('stopBtn').style.opacity    = '1';
+    document.getElementById('stopBtn').disabled         = false;
+    document.getElementById('scannedToggleBtn').style.display = 'none';
+    document.getElementById('scannedPanel').style.display    = 'none';
+    document.getElementById('debugPanel').innerHTML          = '';
+    scannedVisible = false;
+
+    debugLog = { pages: [], extracted: [] };
+
+    // ── Rate limiter: max 100 calls per 60s, pause 10s if hit ────
+    const RATE_LIMIT     = 100;
+    const RATE_WINDOW_MS = 60_000;
+    const PAUSE_MS       = 10_000;
+    const callTimestamps = [];
+
+    async function rateLimitedFetch(url, options, pageNum) {
+      const now = Date.now();
+      while (callTimestamps.length && now - callTimestamps[0] >= RATE_WINDOW_MS) {
+        callTimestamps.shift();
+      }
+      if (callTimestamps.length >= RATE_LIMIT) {
+        const waitMs = RATE_WINDOW_MS - (now - callTimestamps[0]) + 50;
+        const pauseSecs = Math.ceil(Math.max(waitMs, PAUSE_MS) / 1000);
+        setProgress(50, `Rate limit reached — pausing ${pauseSecs}s before page ${pageNum}…`);
+        await new Promise(res => setTimeout(res, Math.max(waitMs, PAUSE_MS)));
+        const after = Date.now();
+        while (callTimestamps.length && after - callTimestamps[0] >= RATE_WINDOW_MS) {
+          callTimestamps.shift();
+        }
+      }
+      callTimestamps.push(Date.now());
+      return fetch(url, options);
+    }
+
+    let campaigns = [];
+    try {
+      for (let page = 1; ; page++) {
+        if (stopRequested) break;
+        setProgress(50, `Fetching page ${page} — ${campaigns.length} campaigns so far…`);
+
+        const reqBody = {
+          campaign_fields: { channels },
+          include_child_campaigns: true,
+          limit: 15,
+          page,
+          request_id: 'req_' + Math.random().toString(36).slice(2, 10)
+        };
+
+        const pageLog = {
+          page,
+          request: reqBody,
+          rawResponseType: null,
+          rawResponseKeys: null,
+          rawResponseLength: null,
+          parsedArrayKey: null,
+          returned: null,
+          stoppedEarly: false
+        };
+        debugLog.pages.push(pageLog);
+
+        const r = await rateLimitedFetch(API_CAMPAIGNS, {
+          method: 'POST', headers: buildHeaders(),
+          body: JSON.stringify(reqBody)
+        }, page);
+        if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText} (page ${page})`);
+        const json = await r.json();
+
+        // Log raw response shape before any parsing
+        pageLog.rawResponseType = Array.isArray(json) ? 'array' : typeof json;
+        if (!Array.isArray(json) && json && typeof json === 'object') {
+          pageLog.rawResponseKeys = Object.keys(json);
+          // Log the length of every array-valued key found
+          pageLog.rawResponseArrayKeys = Object.entries(json)
+            .filter(([k, v]) => Array.isArray(v))
+            .map(([k, v]) => `${k}(${v.length})`);
+        } else if (Array.isArray(json)) {
+          pageLog.rawResponseLength = json.length;
+        }
+
+        // Parse out the campaigns array — try every known key
+        let page_results;
+        if (Array.isArray(json)) {
+          page_results = json;
+          pageLog.parsedArrayKey = 'root array';
+        } else if (Array.isArray(json.data))      { page_results = json.data;      pageLog.parsedArrayKey = 'data'; }
+        else if (Array.isArray(json.campaigns))   { page_results = json.campaigns; pageLog.parsedArrayKey = 'campaigns'; }
+        else if (Array.isArray(json.result))      { page_results = json.result;    pageLog.parsedArrayKey = 'result'; }
+        else if (Array.isArray(json.results))     { page_results = json.results;   pageLog.parsedArrayKey = 'results'; }
+        else if (Array.isArray(json.items))       { page_results = json.items;     pageLog.parsedArrayKey = 'items'; }
+        else {
+          // Last resort: find any array-valued key
+          const arrKey = Object.keys(json).find(k => Array.isArray(json[k]));
+          if (arrKey) { page_results = json[arrKey]; pageLog.parsedArrayKey = arrKey + ' (fallback)'; }
+          else throw new Error('Unexpected response shape on page ' + page + '. Keys: ' + Object.keys(json).join(', '));
+        }
+
+        pageLog.returned = page_results.length;
+        campaigns.push(...page_results);
+
+        // Stop only if the page returned an empty array
+        if (page_results.length === 0) {
+          pageLog.stoppedEarly = true;
+          break;
+        }
+      }
+    } catch(e) {
+      showToast(`Fetch failed: ${e.message}`);
+      reset(btn); return;
+    }
+
+    setProgress(70, `Searching through ${campaigns.length} campaigns…`);
+
+    const matches = [];
+    for (const campaign of campaigns) {
+      const parts      = extractCampaignSearchParts(campaign);
+      const name       = campaign.basic_details?.name || '';
+      const isFlow     = !!campaign.flow_id;
+      const source     = isFlow ? (campaign.flow_name || campaign.flow_id) : 'Campaign';
+      const sourceType = isFlow ? 'Flow' : 'Campaign';
+
+      debugLog.extracted.push({
+        campaign_id: campaign.campaign_id,
+        name,
+        fields: parts.map(p => p.field)
+      });
+
+      // For each term, collect matched fields independently
+      const matchedFields = [];
+      for (let ti = 0; ti < terms.length; ti++) {
+        const term = terms[ti];
+        const re   = campRegexes[ti];
+
+        if (inclName && re.test(name)) {
+          matchedFields.push({ term, field: 'Campaign Name', snippet: getSnippet(name, term, caseI) });
+        }
+        for (const { field, text } of parts) {
+          if (re.test(text)) {
+            matchedFields.push({ term, field, snippet: getSnippet(text, term, caseI) });
+          }
+        }
+      }
+
+      if (matchedFields.length > 0) {
+        matches.push({
+          campaign_id: campaign.campaign_id,
+          name,
+          channel: campaign.channel,
+          status: campaign.status || '—',
+          source,
+          sourceType,
+          matchedFields
+        });
+      }
+    }
+
+    setProgress(100, 'Done');
+    lastResults = matches.map(m => ({
+      ...m,
+      matchedFields: m.matchedFields.map(f => ({ ...f }))
+    }));
+
+    lastScanned = campaigns.map(c => ({
+      campaign_id: c.campaign_id,
+      name:        c.basic_details?.name || '',
+      channel:     c.channel,
+      status:      c.status || '—',
+      sourceType:  c.flow_id ? 'Flow' : 'Campaign',
+      source:      c.flow_id ? (c.flow_name || c.flow_id) : '—'
+    }));
+
+    renderDebugPanel();
+    document.getElementById('statsText').textContent = `${campaigns.length} campaigns scanned`;
+    const scannedBtn = document.getElementById('scannedToggleBtn');
+    scannedBtn.style.display = 'inline-block';
+    scannedBtn.textContent   = `Scanned (${lastScanned.length})`;
+    showBadge(matches.length);
+    renderCampaignTable(matches, terms, caseI);
+    reset(btn);
+  }
+
+  function renderCampaignTable(matches, terms, caseI) {
+    const wrap = document.getElementById('tableWrap');
+    if (matches.length === 0) {
+      const label = Array.isArray(terms) ? terms.map(escapeHTML).join('", "') : escapeHTML(terms);
+      wrap.innerHTML = `<div class="state-empty"><div class="icon">∅</div>No campaigns found containing <strong style="color:var(--text);">"${label}"</strong></div>`;
+      return;
+    }
+
+    // Flatten: one row per matched field per campaign
+    const rows = [];
+    for (const m of matches) {
+      const chClass  = `ch-${m.channel}`;
+      const stClass  = `st-${m.status}`;
+      const rowspan  = m.matchedFields.length;
+
+      m.matchedFields.forEach((mf, i) => {
+        const hl = highlightSnippet(mf.snippet, mf.term || '', caseI);
+        if (i === 0) {
+          rows.push(`<tr>
+            <td class="col-cname" rowspan="${rowspan}"><div class="cell-cname">${escapeHTML(m.name)}</div></td>
+            <td class="col-cid"   rowspan="${rowspan}"><div class="cell-cid">${escapeHTML(m.campaign_id)}</div></td>
+            <td class="col-ch"    rowspan="${rowspan}"><span class="ch-badge ${chClass}">${escapeHTML(m.channel)}</span></td>
+            <td class="col-status" rowspan="${rowspan}"><span class="status-badge ${stClass}">${escapeHTML(m.status)}</span></td>
+            <td class="col-source" rowspan="${rowspan}">
+              <div class="source-badge">
+                <span class="src-type">${escapeHTML(m.sourceType)}</span>
+                ${escapeHTML(m.source)}
+              </div>
+            </td>
+            <td class="col-mfield"><span class="mfield-badge">${escapeHTML(mf.field)}</span></td>
+            <td style="padding:9px 13px;"><span style="background:#00d4a815;color:var(--accent);border:1px solid #00d4a830;font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap;">${escapeHTML(mf.term || '')}</span></td>
+            <td class="col-snippet"><div class="cell-content">${hl}</div></td>
+          </tr>`);
+        } else {
+          rows.push(`<tr>
+            <td class="col-mfield"><span class="mfield-badge">${escapeHTML(mf.field)}</span></td>
+            <td style="padding:9px 13px;"><span style="background:#00d4a815;color:var(--accent);border:1px solid #00d4a830;font-family:var(--mono);font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap;">${escapeHTML(mf.term || '')}</span></td>
+            <td class="col-snippet"><div class="cell-content">${hl}</div></td>
+          </tr>`);
+        }
+      });
+    }
+
+    wrap.innerHTML = `
+      <table>
+        <thead><tr>
+          <th class="col-cname">Campaign Name</th>
+          <th class="col-cid">Campaign ID</th>
+          <th class="col-ch">Channel</th>
+          <th class="col-status">Status</th>
+          <th class="col-source">Source</th>
+          <th class="col-mfield">Match Field</th>
+          <th style="min-width:100px;">Term</th>
+          <th class="col-snippet">Matched Snippet</th>
+        </tr></thead>
+        <tbody>${rows.join('')}</tbody>
+      </table>`;
+  }
+
+  /* ── Shared helpers ─────────────────────────────────────────── */
+  function showBadge(count) {
+    const badge = document.getElementById('matchBadge');
+    badge.textContent   = `${count} match${count !== 1 ? 'es' : ''}`;
+    badge.className     = 'badge' + (count === 0 ? ' zero' : '');
+    badge.style.display = 'inline-block';
+    if (count > 0) {
+      document.getElementById('exportCsvBtn').style.display  = 'inline-block';
+      document.getElementById('exportJsonBtn').style.display = 'inline-block';
+    }
+  }
+
+  function spinnerHTML(label) {
+    return `<svg width="13" height="13" viewBox="0 0 14 14" style="animation:spin .9s linear infinite"><circle cx="7" cy="7" r="5" stroke="#0d0f12" stroke-width="2" stroke-dasharray="20 12" fill="none"/></svg> ${label}`;
+  }
+
+  /* ── Scanned list ──────────────────────────────────────────── */
+  let scannedVisible = false;
+
+  function stopSearch() {
+    stopRequested = true;
+    const btn = document.getElementById('stopBtn');
+    btn.textContent = '⏸ Stopping…';
+    btn.style.opacity = '0.5';
+    btn.disabled = true;
+  }
+
+  function toggleScanned() {
+    scannedVisible = !scannedVisible;
+    const panel = document.getElementById('scannedPanel');
+    const btn   = document.getElementById('scannedToggleBtn');
+    panel.style.display = scannedVisible ? 'block' : 'none';
+    btn.style.color       = scannedVisible ? 'var(--accent)' : 'var(--muted)';
+    btn.style.borderColor = scannedVisible ? 'var(--accent)' : 'var(--border-hi)';
+    if (scannedVisible) renderScannedPanel();
+  }
+
+  function renderScannedPanel() {
+    const panel = document.getElementById('scannedPanel');
+    if (!panel || panel.style.display === 'none') return;
+
+    const rows = lastScanned.map(c => {
+      const chClass = `ch-${c.channel}`;
+      const stClass = `st-${c.status}`;
+      return `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:8px 14px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--accent);word-break:break-word;max-width:200px;">${escapeHTML(c.name)}</td>
+        <td style="padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--muted);word-break:break-all;">${escapeHTML(c.campaign_id)}</td>
+        <td style="padding:8px 14px;"><span class="ch-badge ${chClass}">${escapeHTML(c.channel)}</span></td>
+        <td style="padding:8px 14px;"><span class="status-badge ${stClass}">${escapeHTML(c.status)}</span></td>
+        <td style="padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--muted);">
+          <span style="font-size:9px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--border-hi);display:block;margin-bottom:2px;">${escapeHTML(c.sourceType)}</span>
+          ${c.source !== '—' ? escapeHTML(c.source) : '<span style="color:var(--border-hi);">—</span>'}
+        </td>
+      </tr>`;
+    }).join('');
+
+    panel.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead style="position:sticky;top:0;z-index:2;background:var(--surface);">
+          <tr>
+            <th style="padding:9px 14px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);">Campaign Name</th>
+            <th style="padding:9px 14px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);">Campaign ID</th>
+            <th style="padding:9px 14px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);">Channel</th>
+            <th style="padding:9px 14px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);">Status</th>
+            <th style="padding:9px 14px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);">Source</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  function reset(btn) {
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="5.5" cy="5.5" r="4" stroke="#0d0f12" stroke-width="1.8"/><line x1="8.7" y1="8.7" x2="12" y2="12" stroke="#0d0f12" stroke-width="1.8" stroke-linecap="round"/></svg> Run Search`;
+    document.getElementById('stopBtn').style.display = 'none';
+    document.getElementById('progressWrap').classList.remove('visible');
+  }
+
+  /* ── Exports ───────────────────────────────────────────────── */
+  function exportCSV() {
+    const terms = getSearchTerms();
+    const label = terms.slice(0,2).join('+') + (terms.length > 2 ? '…' : '');
+    // esc: wrap in quotes, escape internal quotes, strip HTML tags
+    const esc  = v => '"' + String(v ?? '').replace(/"/g,'""').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim() + '"';
+
+    let lines, filename;
+    if (currentMode === 'content_block') {
+      lines    = [
+        ['Block ID','Name','Matched Terms','Content'].map(esc).join(','),
+        ...lastResults.map(r => [r.id, r.name, (r.matchedTerms||[]).join(' | '), r.content].map(esc).join(','))
+      ];
+      filename = `block-search-${label}.csv`;
+    } else {
+      lines = [
+        ['Campaign Name','Campaign ID','Channel','Status','Source Type','Source','Match Field','Term','Snippet'].map(esc).join(',')
+      ];
+      for (const r of lastResults) {
+        for (const mf of r.matchedFields) {
+          lines.push([r.name, r.campaign_id, r.channel, r.status, r.sourceType, r.source, mf.field, mf.term || '', mf.snippet].map(esc).join(','));
+        }
+      }
+      filename = `campaign-search-${label}.csv`;
+    }
+    // UTF-8 BOM (\uFEFF) ensures Excel opens the file with correct encoding
+    dlWithBOM(filename, lines.join('\r\n'));
+  }
+
+  function exportJSON() {
+    const terms = getSearchTerms();
+    const label = terms.slice(0,2).join('+') + (terms.length > 2 ? '…' : '');
+    let payload, filename;
+    if (currentMode === 'content_block') {
+      payload  = { search_terms: terms, total: lastResults.length, matches: lastResults };
+      filename = `block-search-${label}.json`;
+    } else {
+      payload  = { search_terms: terms, total: lastResults.length, mode: 'campaigns', matches: lastResults };
+      filename = `campaign-search-${label}.json`;
+    }
+    dl(filename, JSON.stringify(payload, null, 2), 'application/json');
+  }
+
+  function dlWithBOM(name, csvContent) {
+    // Prepend UTF-8 BOM so Excel correctly interprets unicode characters
+    const bom  = '\uFEFF';
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob),
+      download: name.replace(/\s+/g,'-')
+    });
+    a.click();
+  }
+
+  function dl(name, content, type) {
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([content], { type })),
+      download: name.replace(/\s+/g,'-')
+    });
+    a.click();
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !document.getElementById('searchBtn').disabled) runSearch();
+  });
+
+  const _s = document.createElement('style');
+  _s.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
+  document.head.appendChild(_s);
+</script>
 </body>
 </html>
