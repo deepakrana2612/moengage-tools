@@ -211,11 +211,6 @@ app.get("/health", (_req, res) => {
   });
 });
 
-// ─── Root ─────────────────────────────────────────────────────────────────────
-app.get("/", (_req, res) =>
-  res.sendFile(path.join(__dirname, "public", "index.html"))
-);
-
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`✅ MoEngage Tools running on port ${PORT}`);
