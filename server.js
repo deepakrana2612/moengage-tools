@@ -190,30 +190,79 @@ app.post("/api/cb/create", apiLimiter, async (req, res) => {
   }
 });
 
-// ─── Legacy Route Aliases (cb-migrator.html uses old paths) ──────────────────
-app.post("/cb-search",  apiLimiter, async (req, res) => {
-  const { appId, apiKey, ...payload } = req.body;
-  if (!appId || !apiKey) return missingCreds(res);
+// ─── Legacy Route Aliases (cb-migrator.html passes creds as headers) ─────────
+// Original proxy.js pattern: Authorization + MOE-APPKEY + X-Moe-Dc headers
+
+function legacyCbHeaders(req) {
+  return {
+    Authorization:  req.headers["authorization"]  || "",
+    "Content-Type": "application/json",
+    "MOE-APPKEY":   req.headers["moe-appkey"]     || req.headers["moe-appid"] || "",
+  };
+}
+
+function legacyDc(req) {
+  return req.headers["x-moe-dc"] || "101";
+}
+
+function legacyMissingAuth(req, res) {
+  if (!req.headers["authorization"]) {
+    res.status(400).json({ error: "Authorization header is required." });
+    return true;
+  }
+  return false;
+}
+
+app.post("/cb-search", apiLimiter, async (req, res) => {
+  if (legacyMissingAuth(req, res)) return;
+  const dc = legacyDc(req);
   try {
-    const response = await axios.post(`${MOE_API_BASE}/v1/external/campaigns/content-blocks/search`, payload, { headers: moeHeaders(appId, apiKey), timeout: 30000 });
+    const response = await axios.post(
+      `https://api-${dc}.moengage.com/v1/external/campaigns/content-blocks/search`,
+      req.body,
+      { headers: legacyCbHeaders(req), timeout: 30000 }
+    );
     res.status(response.status).json(response.data);
   } catch (err) { res.status(err.response?.status || 500).json(err.response?.data || { error: err.message }); }
 });
 
 app.post("/cb-get-ids", apiLimiter, async (req, res) => {
-  const { appId, apiKey, ids = [], is_raw_content_required = true } = req.body;
-  if (!appId || !apiKey) return missingCreds(res);
+  if (legacyMissingAuth(req, res)) return;
+  const dc = legacyDc(req);
   try {
-    const response = await axios.post(`${MOE_API_BASE}/v1/external/campaigns/content-blocks/get-by-ids`, { ids, is_raw_content_required }, { headers: moeHeaders(appId, apiKey), timeout: 30000 });
+    const response = await axios.post(
+      `https://api-${dc}.moengage.com/v1/external/campaigns/content-blocks/get-by-ids`,
+      req.body,
+      { headers: legacyCbHeaders(req), timeout: 30000 }
+    );
     res.status(response.status).json(response.data);
   } catch (err) { res.status(err.response?.status || 500).json(err.response?.data || { error: err.message }); }
 });
 
-app.post("/cb-create",  apiLimiter, async (req, res) => {
-  const { appId, apiKey, ...payload } = req.body;
-  if (!appId || !apiKey) return missingCreds(res);
+app.post("/cb-create", apiLimiter, async (req, res) => {
+  if (legacyMissingAuth(req, res)) return;
+  const dc = legacyDc(req);
   try {
-    const response = await axios.post(`${MOE_API_BASE}/v1/external/campaigns/content-blocks`, payload, { headers: moeHeaders(appId, apiKey), timeout: 30000 });
+    const response = await axios.post(
+      `https://api-${dc}.moengage.com/v1/external/campaigns/content-blocks`,
+      req.body,
+      { headers: legacyCbHeaders(req), timeout: 30000 }
+    );
+    res.status(response.status).json(response.data);
+  } catch (err) { res.status(err.response?.status || 500).json(err.response?.data || { error: err.message }); }
+});
+
+app.post("/cb-update", apiLimiter, async (req, res) => {
+  if (legacyMissingAuth(req, res)) return;
+  const dc  = legacyDc(req);
+  const id  = req.headers["x-block-id"] || req.body.id;
+  if (!id) return res.status(400).json({ error: "Block ID required (x-block-id header or body.id)." });
+  try {
+    const response = await axios.put(
+      `https://api-${dc}.moengage.com/v1/external/campaigns/content-blocks/${id}`,
+      req.body,
+      { headers: legacyCbHeaders(req), timeout: 30000 }
+    );
     res.status(response.status).json(response.data);
   } catch (err) { res.status(err.response?.status || 500).json(err.response?.data || { error: err.message }); }
 });
