@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MoEngage Tools — T-Mobile</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 24px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+
+    .logo {
+      font-size: 13px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #e20074;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 38px;
+      font-weight: 700;
+      color: #ffffff;
+      line-height: 1.2;
+    }
+
+    h1 span { color: #e20074; }
+
+    header p {
+      margin-top: 12px;
+      color: #888;
+      font-size: 15px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      max-width: 960px;
+      width: 100%;
+    }
+
+    .card {
+      background: #141414;
+      border: 1px solid #222;
+      border-radius: 16px;
+      padding: 32px 28px;
+      transition: border-color 0.2s, transform 0.2s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+
+    .card:hover {
+      border-color: #e20074;
+      transform: translateY(-3px);
+    }
+
+    .card-icon {
+      font-size: 28px;
+      margin-bottom: 16px;
+    }
+
+    .card h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    .card p {
+      font-size: 14px;
+      color: #777;
+      line-height: 1.6;
+    }
+
+    .card .tag {
+      display: inline-block;
+      margin-top: 16px;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #e20074;
+      font-weight: 600;
+    }
+
+    .health-bar {
+      margin-top: 64px;
+      text-align: center;
+      font-size: 12px;
+      color: #444;
+    }
+
+    .health-bar a {
+      color: #555;
+      text-decoration: none;
+    }
+
+    .health-bar a:hover { color: #e20074; }
+
+    .dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      background: #22c55e;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">T-Mobile · MoEngage</div>
+    <h1>Marketing <span>Utility</span> Suite</h1>
+    <p>Internal tools for the MarTech & Campaign Operations team</p>
+  </header>
+
+  <div class="grid">
+
+    <a class="card" href="/template-builder">
+      <div class="card-icon">✉️</div>
+      <h2>Email Template Builder</h2>
+      <p>Create and update MoEngage custom email templates with Jinja2 rendering, rich text editing, and language-specific base template support.</p>
+      <span class="tag">React App · Create / Update</span>
+    </a>
+
+    <a class="card" href="/content-audit.html">
+      <div class="card-icon">🔍</div>
+      <h2>Campaign Content Audit</h2>
+      <p>Search across 2,500+ campaign setups for specific text strings across Email, SMS, and Push channels. Multi-term search with CSV export.</p>
+      <span class="tag">Static Tool · CSV Export</span>
+    </a>
+
+    <a class="card" href="/content-block-search.html">
+      <div class="card-icon">📦</div>
+      <h2>Content Block Search</h2>
+      <p>Find specific text within MoEngage content blocks. Useful for auditing reusable content across campaigns before making changes.</p>
+      <span class="tag">Static Tool · Block-Level</span>
+    </a>
+
+    <a class="card" href="/token-manager.html">
+      <div class="card-icon">🔐</div>
+      <h2>Token Manager</h2>
+      <p>Paste Bearer and Refresh tokens from the Flow UI. Handles auto-refresh and proxies authenticated requests to any custom OAuth API.</p>
+      <span class="tag">Auth · Bearer + Refresh</span>
+    </a>
+
+    <a class="card" href="/cb-migrator.html">
+      <div class="card-icon">🚚</div>
+      <h2>Content Block Migration</h2>
+      <p>Migrate content blocks between MoEngage environments. Skips duplicates and generates a detailed report of what was created and what was skipped.</p>
+      <span class="tag">Source → Target · Report</span>
+    </a>
+
+    <a class="card" href="/flow-review.html">
+      <div class="card-icon">🔬</div>
+      <h2>Flow Action Nodes Review</h2>
+      <p>Fetch the full JSON of any Flow version by entering the Flow ID and version number. Inspect action nodes, segments, and campaign config.</p>
+      <span class="tag">Bearer Token · Version JSON</span>
+    </a>
+
+  </div>
+
+  <div class="health-bar">
+    <span class="dot"></span>
+    Server healthy ·
+    <a href="/health">View health check</a> ·
+    Built for T-Mobile Internal Use
+  </div>
+</body>
+</html>

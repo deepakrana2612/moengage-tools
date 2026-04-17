@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Token Manager — MoEngage Tools</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0a0a0a; color: #f5f5f5; min-height: 100vh; padding: 40px 24px;
+    }
+    .container { max-width: 700px; margin: 0 auto; }
+    .back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #555; text-decoration: none; margin-bottom: 32px; }
+    .back:hover { color: #e20074; }
+    h1 { font-size: 26px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    .subtitle { font-size: 14px; color: #666; margin-bottom: 36px; line-height: 1.6; }
+    .steps { background: #0f0f0f; border: 1px solid #1e1e1e; border-radius: 12px; padding: 20px 24px; margin-bottom: 28px; }
+    .steps h3 { font-size: 11px; color: #555; letter-spacing: 1px; text-transform: uppercase; font-weight: 600; margin-bottom: 14px; }
+    .steps ol { padding-left: 18px; }
+    .steps li { font-size: 13px; color: #777; line-height: 1.9; }
+    .steps code { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px; padding: 1px 6px; font-size: 12px; color: #e20074; font-family: "SF Mono", monospace; }
+    .status-bar { display: flex; align-items: center; gap: 10px; background: #141414; border: 1px solid #222; border-radius: 10px; padding: 14px 18px; margin-bottom: 24px; font-size: 13px; }
+    .status-dot { width: 9px; height: 9px; border-radius: 50%; background: #333; flex-shrink: 0; transition: background 0.3s; }
+    .status-dot.active  { background: #22c55e; box-shadow: 0 0 6px #22c55e66; }
+    .status-dot.expired { background: #f97316; }
+    #statusLabel { color: #888; }
+    #statusLabel strong { color: #fff; }
+    #statusExpiry { margin-left: auto; font-size: 12px; color: #555; font-family: monospace; }
+    .card { background: #141414; border: 1px solid #222; border-radius: 14px; padding: 28px; margin-bottom: 20px; }
+    .card h2 { font-size: 15px; font-weight: 600; color: #ccc; margin-bottom: 20px; }
+    .field { margin-bottom: 18px; }
+    .field:last-child { margin-bottom: 0; }
+    label { display: block; font-size: 11px; font-weight: 600; color: #666; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 7px; }
+    .input-wrap { position: relative; }
+    textarea {
+      width: 100%; background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 8px;
+      color: #f5f5f5; font-size: 12px; font-family: "SF Mono", "Fira Code", monospace;
+      padding: 12px 44px 12px 13px; outline: none; resize: none; height: 100px;
+      line-height: 1.5; transition: border-color 0.2s;
+    }
+    textarea:focus { border-color: #e20074; }
+    textarea.blurred { filter: blur(4px); transition: filter 0.2s; }
+    .toggle-vis { position: absolute; top: 10px; right: 10px; background: #1e1e1e; border: 1px solid #2a2a2a; border-radius: 6px; color: #555; cursor: pointer; font-size: 14px; padding: 4px 7px; }
+    .toggle-vis:hover { color: #aaa; border-color: #444; }
+    .hint { font-size: 11px; color: #444; margin-top: 6px; }
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
+    button { display: inline-flex; align-items: center; gap: 7px; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.2s, transform 0.1s; }
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: #e20074; color: #fff; }
+    .btn-primary:hover:not(:disabled) { opacity: 0.88; }
+    .btn-secondary { background: #1e1e1e; color: #aaa; border: 1px solid #2a2a2a; }
+    .btn-secondary:hover:not(:disabled) { color: #fff; border-color: #444; }
+    .btn-danger { background: #1a0a0a; color: #ef4444; border: 1px solid #3a1515; }
+    .btn-danger:hover:not(:disabled) { background: #2a1010; }
+    input[type="text"] { width: 100%; background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 8px; color: #f5f5f5; font-size: 13px; font-family: "SF Mono", monospace; padding: 11px 13px; outline: none; transition: border-color 0.2s; }
+    input[type="text"]:focus { border-color: #e20074; }
+    .test-result { margin-top: 16px; background: #0d0d0d; border: 1px solid #222; border-radius: 8px; padding: 14px; font-size: 12px; font-family: monospace; color: #aaa; white-space: pre-wrap; display: none; max-height: 200px; overflow: auto; }
+    #toast { position: fixed; bottom: 28px; right: 28px; background: #1e1e1e; border: 1px solid #333; border-radius: 10px; padding: 12px 18px; font-size: 13px; color: #f5f5f5; opacity: 0; transform: translateY(10px); transition: opacity 0.25s, transform 0.25s; pointer-events: none; max-width: 320px; z-index: 999; }
+    #toast.show    { opacity: 1; transform: translateY(0); }
+    #toast.success { border-color: #22c55e44; color: #86efac; }
+    #toast.error   { border-color: #ef444444; color: #fca5a5; }
+    #toast.info    { border-color: #3b82f644; color: #93c5fd; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <a class="back" href="/">← Back to Dashboard</a>
+  <h1>🔐 Token Manager</h1>
+  <p class="subtitle">
+    Copy your Bearer token from the browser DevTools Network tab and paste it here.<br>
+    The server stores it in memory and injects it into all Flow API proxy calls.
+  </p>
+
+  <div class="steps">
+    <h3>How to grab the token from DevTools</h3>
+    <ol>
+      <li>Open the Flow UI and log in</li>
+      <li>Press <code>F12</code> → <code>Network</code> tab → trigger any action in the UI</li>
+      <li>Click any API request in the list</li>
+      <li>Go to <code>Headers</code> → find <code>Authorization: Bearer &lt;token&gt;</code></li>
+      <li>Copy everything <strong>after</strong> <code>Bearer </code> and paste below</li>
+    </ol>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <div id="statusLabel">Checking…</div>
+    <div id="statusExpiry"></div>
+  </div>
+
+  <div class="card">
+    <h2>Paste Bearer Token</h2>
+    <div class="field">
+      <label>Bearer Token</label>
+      <div class="input-wrap">
+        <textarea id="bearerToken" placeholder="eyJhbGci…" spellcheck="false" class="blurred"></textarea>
+        <button class="toggle-vis" id="toggleBtn" onclick="toggleVis()" title="Show/Hide">👁</button>
+      </div>
+      <p class="hint">Paste the raw token value — no need to include the word "Bearer".</p>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="saveToken()">💾 Save Token</button>
+      <button class="btn-danger"  onclick="clearToken()">🗑 Clear</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Test Token</h2>
+    <div class="field">
+      <label>Test Endpoint (GET)</label>
+      <input type="text" id="testUrl" placeholder="https://api.example.com/v1/flows" spellcheck="false" />
+      <p class="hint">Paste any GET endpoint from the Flow API to verify the token works.</p>
+    </div>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="testToken()">⚡ Test Request</button>
+    </div>
+    <pre class="test-result" id="testResult"></pre>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script>
+  let isVisible = false;
+
+  function toggleVis() {
+    isVisible = !isVisible;
+    document.getElementById('bearerToken').classList.toggle('blurred', !isVisible);
+    document.getElementById('toggleBtn').textContent = isVisible ? '🙈' : '👁';
+  }
+
+  function toast(msg, type = 'info') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = `show ${type}`;
+    setTimeout(() => el.className = '', 3500);
+  }
+
+  async function saveToken() {
+    const token = document.getElementById('bearerToken').value.trim();
+    if (!token) return toast('Paste a token first.', 'error');
+    const res  = await fetch('/api/auth/set-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bearerToken: token })
+    });
+    const data = await res.json();
+    if (res.ok) { toast('✅ Token saved', 'success'); loadStatus(); }
+    else toast(`❌ ${data.error}`, 'error');
+  }
+
+  async function clearToken() {
+    if (!confirm('Clear the stored token?')) return;
+    await fetch('/api/auth/clear', { method: 'POST' });
+    document.getElementById('bearerToken').value = '';
+    toast('Token cleared', 'info');
+    loadStatus();
+  }
+
+  async function loadStatus() {
+    const res  = await fetch('/api/auth/status');
+    const data = await res.json();
+    const dot   = document.getElementById('statusDot');
+    const label = document.getElementById('statusLabel');
+    const exp   = document.getElementById('statusExpiry');
+    if (!data.hasToken) {
+      dot.className = 'status-dot';
+      label.innerHTML = 'No token set — paste one above';
+      exp.textContent = '';
+      return;
+    }
+    dot.className   = `status-dot ${data.isExpired ? 'expired' : 'active'}`;
+    label.innerHTML = data.isExpired
+      ? '<strong>Token likely expired</strong> — grab a fresh one from DevTools'
+      : '<strong>Token active</strong> — ready for API calls';
+    exp.textContent = data.setAt ? `Set at ${new Date(data.setAt).toLocaleTimeString()}` : '';
+  }
+
+  async function testToken() {
+    const url    = document.getElementById('testUrl').value.trim();
+    const result = document.getElementById('testResult');
+    if (!url) return toast('Enter a test URL.', 'error');
+    result.style.display = 'block';
+    result.textContent   = 'Sending request…';
+    const res  = await fetch('/api/flow/proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, method: 'GET' })
+    });
+    const data = await res.json();
+    result.textContent = JSON.stringify(data, null, 2);
+    if (res.ok) toast('✅ Request succeeded', 'success');
+    else if (res.status === 401) toast('❌ Token rejected — grab a fresh one from DevTools', 'error');
+    else toast(`❌ Request failed (${res.status})`, 'error');
+  }
+
+  loadStatus();
+</script>
+</body>
+</html>
