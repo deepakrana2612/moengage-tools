@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "build": "cd client && npm install && npm run build",
+    "build": "[ -f client/package.json ] && (cd client && npm install && npm run build) || echo 'No React app found in client/ — skipping build'",
     "dev": "nodemon server.js",
     "install:all": "npm install && cd client && npm install"
   },
