@@ -190,6 +190,34 @@ app.post("/api/cb/create", apiLimiter, async (req, res) => {
   }
 });
 
+// ─── Legacy Route Aliases (cb-migrator.html uses old paths) ──────────────────
+app.post("/cb-search",  apiLimiter, async (req, res) => {
+  const { appId, apiKey, ...payload } = req.body;
+  if (!appId || !apiKey) return missingCreds(res);
+  try {
+    const response = await axios.post(`${MOE_API_BASE}/v1/external/campaigns/content-blocks/search`, payload, { headers: moeHeaders(appId, apiKey), timeout: 30000 });
+    res.status(response.status).json(response.data);
+  } catch (err) { res.status(err.response?.status || 500).json(err.response?.data || { error: err.message }); }
+});
+
+app.post("/cb-get-ids", apiLimiter, async (req, res) => {
+  const { appId, apiKey, ids = [], is_raw_content_required = true } = req.body;
+  if (!appId || !apiKey) return missingCreds(res);
+  try {
+    const response = await axios.post(`${MOE_API_BASE}/v1/external/campaigns/content-blocks/get-by-ids`, { ids, is_raw_content_required }, { headers: moeHeaders(appId, apiKey), timeout: 30000 });
+    res.status(response.status).json(response.data);
+  } catch (err) { res.status(err.response?.status || 500).json(err.response?.data || { error: err.message }); }
+});
+
+app.post("/cb-create",  apiLimiter, async (req, res) => {
+  const { appId, apiKey, ...payload } = req.body;
+  if (!appId || !apiKey) return missingCreds(res);
+  try {
+    const response = await axios.post(`${MOE_API_BASE}/v1/external/campaigns/content-blocks`, payload, { headers: moeHeaders(appId, apiKey), timeout: 30000 });
+    res.status(response.status).json(response.data);
+  } catch (err) { res.status(err.response?.status || 500).json(err.response?.data || { error: err.message }); }
+});
+
 // ─── Token Auth + Flow Proxy ──────────────────────────────────────────────────
 app.use("/api/auth", tokenAuth.router);
 app.use("/api/flow", tokenAuth.flowProxy);
