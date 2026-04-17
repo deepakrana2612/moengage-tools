@@ -1,22 +1,1121 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Content Block Migration — MoEngage Tools</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0a0a0a; color: #f5f5f5; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px; }
-    h1 { font-size: 24px; color: #fff; margin-bottom: 12px; }
-    p { color: #666; font-size: 15px; margin-bottom: 24px; }
-    .badge { display: inline-block; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 10px 20px; font-size: 13px; color: #e20074; }
-    a { color: #e20074; text-decoration: none; margin-top: 24px; display: inline-block; font-size: 13px; }
-    a:hover { text-decoration: underline; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoEngage · Content Block Migrator</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg       : #0f1117;
+  --surface  : #181c26;
+  --surface2 : #1e2335;
+  --border   : #252b40;
+  --border2  : #303755;
+  --text     : #dde0f0;
+  --muted    : #6b738f;
+  --accent   : #5b6af0;
+  --acc-soft : #1e2455;
+  --acc-glow : rgba(91,106,240,.18);
+  --success  : #34d399;
+  --suc-soft : #0a2e20;
+  --warn     : #fbbf24;
+  --warn-soft: #2e2000;
+  --danger   : #f87171;
+  --dan-soft : #2e0e0e;
+  --info     : #60a5fa;
+  --inf-soft : #0a1e38;
+  --mono     : 'Cascadia Code','Fira Code','Courier New',monospace;
+  --r        : 7px;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+/* ── Header ────────────────────────────────────────────── */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 28px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.logo {
+  width: 30px; height: 30px;
+  background: var(--accent);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+  letter-spacing: -.5px;
+}
+header h1 { font-size: 14px; font-weight: 600; letter-spacing: .01em; }
+.badge {
+  background: var(--acc-soft);
+  color: #8b9cf4;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 99px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+/* ── Layout ────────────────────────────────────────────── */
+main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 64px; }
+
+.section { margin-bottom: 20px; }
+.section-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 680px) { .grid-2 { grid-template-columns: 1fr; } }
+
+/* ── Cards ─────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 18px;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: .04em;
+}
+.env-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-src { background: var(--info); box-shadow: 0 0 6px var(--info); }
+.dot-tgt { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+
+/* ── Form ──────────────────────────────────────────────── */
+.field { margin-bottom: 12px; }
+.field:last-child { margin-bottom: 0; }
+
+label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 5px;
+  letter-spacing: .02em;
+}
+
+input[type=text],
+input[type=password],
+select {
+  width: 100%;
+  background: #0c0f1a;
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 11px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+input:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--acc-glow);
+}
+input::placeholder { color: var(--muted); opacity: .5; }
+select option { background: #1e2335; }
+
+/* ── Options ───────────────────────────────────────────── */
+.options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+@media (max-width: 600px) { .options-grid { grid-template-columns: 1fr; } }
+
+.opt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.options-grid .opt-row:nth-child(odd):not(:last-child),
+.options-grid .opt-row:nth-child(even):not(:last-child) {
+  border-right: none;
+}
+@media (min-width: 601px) {
+  .opt-row:nth-child(odd) { border-right: 1px solid var(--border); }
+}
+.opt-row:last-child, .opt-row:nth-last-child(2):nth-child(odd) { border-bottom: none; }
+
+.opt-text .opt-name { font-size: 12.5px; }
+.opt-text .opt-desc { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+.toggle { position: relative; width: 34px; height: 18px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute; inset: 0;
+  background: var(--border2);
+  border-radius: 99px;
+  cursor: pointer;
+  transition: background .2s;
+}
+.slider::before {
+  content: '';
+  position: absolute;
+  width: 12px; height: 12px;
+  left: 3px; top: 3px;
+  background: var(--muted);
+  border-radius: 50%;
+  transition: transform .2s, background .2s;
+}
+.toggle input:checked + .slider { background: var(--acc-soft); }
+.toggle input:checked + .slider::before {
+  transform: translateX(16px);
+  background: var(--accent);
+}
+
+/* ── Run bar ───────────────────────────────────────────── */
+.run-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 20px 0 16px;
+  flex-wrap: wrap;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--r);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 9px 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background .15s, transform .1s;
+  white-space: nowrap;
+}
+.btn-primary:hover:not(:disabled) { background: #4a59df; }
+.btn-primary:active:not(:disabled) { transform: scale(.98); }
+.btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+
+.btn-sec {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+  white-space: nowrap;
+}
+.btn-sec:hover { border-color: var(--text); color: var(--text); }
+
+/* ── Spinner ───────────────────────────────────────────── */
+.spinner {
+  width: 13px; height: 13px;
+  border: 2px solid rgba(255,255,255,.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .65s linear infinite;
+  display: none;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Progress ──────────────────────────────────────────── */
+.prog-label {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-bottom: 5px;
+  display: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prog-track {
+  height: 4px;
+  background: var(--surface2);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  display: none;
+}
+.prog-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--info));
+  border-radius: 99px;
+  width: 0%;
+  transition: width .35s ease;
+}
+
+/* ── Log ───────────────────────────────────────────────── */
+.log-box {
+  background: #090c14;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.8;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.ll { display: flex; gap: 10px; }
+.lt { color: #252d48; flex-shrink: 0; user-select: none; }
+.li { color: var(--info); }
+.lok { color: var(--success); }
+.lsk { color: var(--warn); }
+.le  { color: var(--danger); }
+.ld  { color: var(--muted); }
+
+/* ── Stats ─────────────────────────────────────────────── */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 560px) { .stats-row { grid-template-columns: 1fr 1fr; } }
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px 16px;
+  text-align: center;
+}
+.stat-n { font-size: 30px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+.stat-l { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+
+/* ── Table ─────────────────────────────────────────────── */
+.table-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.table-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.table-top h3 { font-size: 12.5px; font-weight: 600; }
+
+.tabs { display: flex; gap: 4px; }
+.tab {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 99px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .15s;
+}
+.tab:hover { color: var(--text); border-color: var(--text); }
+.tab.on { background: var(--acc-soft); border-color: var(--accent); color: #8b9cf4; }
+
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; table-layout: fixed; }
+th {
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 9px 14px;
+  background: #0c0f1a;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+td {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  word-break: break-word;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: rgba(255,255,255,.018); }
+
+.col-n { width: 28%; }
+.col-t { width: 9%; }
+.col-s { width: 13%; }
+.col-r { width: 50%; }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 99px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.p-created { background: var(--suc-soft); color: var(--success); }
+.p-updated { background: var(--warn-soft); color: var(--warn); }
+.p-failed  { background: var(--dan-soft); color: var(--danger); }
+.p-html    { background: var(--inf-soft); color: var(--info); }
+.p-text    { background: var(--surface2); color: var(--muted); }
+
+.empty { text-align: center; padding: 36px 20px; color: var(--muted); font-size: 12.5px; }
+
+/* ── Export row ────────────────────────────────────────── */
+.export-row { display: flex; gap: 8px; margin-top: 12px; }
+
+/* ── Hidden ────────────────────────────────────────────── */
+.hidden { display: none !important; }
+</style>
 </head>
 <body>
-  <h1>Content Block Migration</h1>
-  <p>Migrate content blocks between MoEngage environments.</p>
-  <div class="badge">⚙️ Replace this file with your utility HTML</div>
-  <br/><a href="/">← Back to Dashboard</a>
+
+<header>
+  <div class="logo">M</div>
+  <h1>Content Block Migrator</h1>
+  <span class="badge">MoEngage</span>
+</header>
+
+<main>
+
+  <!-- ── Environment Config ────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">Environments</div>
+    <div class="grid-2">
+
+      <div class="card">
+        <div class="card-head">
+          <span class="env-dot dot-src"></span> Source Environment
+        </div>
+        <div class="field">
+          <label>Workspace ID</label>
+          <input type="text" id="src-app" placeholder="e.g. A1B2C3D4E5F6G7H8I9J0" />
+        </div>
+        <div class="field">
+          <label>API Key</label>
+          <input type="password" id="src-key" placeholder="Campaign / Custom Templates key" />
+        </div>
+                <div class="field">
+          <label>Your Email Address <span style="color:var(--danger);margin-left:2px;">*</span></label>
+          <input type="text" id="user-email" placeholder="you@t-mobile.com" />
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="env-dot dot-tgt"></span> Target Environment
+        </div>
+        <div class="field">
+          <label>Workspace ID</label>
+          <input type="text" id="tgt-app" placeholder="e.g. A1B2C3D4E5F6G7H8I9J0" />
+        </div>
+        <div class="field">
+          <label>API Key</label>
+          <input type="password" id="tgt-key" placeholder="Campaign / Custom Templates key" />
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Options ───────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">Options</div>
+    <div class="card" style="padding:0;">
+      <div class="options-grid">
+
+        <div class="opt-row">
+          <div class="opt-text">
+            <div class="opt-name">Include Archived</div>
+            <div class="opt-desc">Migrate ARCHIVED blocks alongside ACTIVE</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="opt-archived">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Block Name Filter ──────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">Block Names to Migrate</div>
+    <div class="card">
+      <div class="field" style="margin-bottom:0;">
+        <label>Block names (comma-separated) <span style="color:var(--danger);margin-left:2px;">*</span></label>
+        <textarea id="opt-names" rows="3" placeholder="MetroGlobalFonts, MetroMarketingFooterBlackEN, MetroHeaderDarkPurpleEn" style="width:100%;background:#0c0f1a;border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:var(--mono);font-size:12px;padding:9px 11px;outline:none;resize:vertical;line-height:1.6;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor='var(--accent)';this.style.boxShadow='0 0 0 3px var(--acc-glow)'" onblur="this.style.borderColor='var(--border2)';this.style.boxShadow='none'"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Run ───────────────────────────────────────────── -->
+  <div class="run-bar">
+    <button class="btn-primary" id="btn-run" onclick="runPreflight()">
+      <div class="spinner" id="spinner"></div>
+      <span id="btn-lbl">Analyse Blocks</span>
+    </button>
+    <button class="btn-sec" onclick="resetLog()">Clear Log</button>
+  </div>
+
+  <div class="prog-label" id="prog-label">Initialising…</div>
+  <div class="prog-track" id="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+
+  <!-- ── Log ───────────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">Activity Log</div>
+    <div class="log-box" id="log">
+      <div class="ll"><span class="ld">// Configure source &amp; target environments above, then click Run Migration</span></div>
+    </div>
+  </div>
+
+  <!-- ── Preflight result (rendered by JS) ─────────────── -->
+  <div id="preflight-section" class="hidden"></div>
+
+  <!-- ── Final Report ───────────────────────────────────── -->
+  <div id="report-section" class="hidden">
+
+    <div class="section-label" style="margin-top:28px;">Migration Report</div>
+
+    <div class="stats-row">
+      <div class="stat">
+        <div class="stat-n" id="s-total" style="color:var(--text)">0</div>
+        <div class="stat-l">Total</div>
+      </div>
+      <div class="stat">
+        <div class="stat-n" id="s-created" style="color:var(--success)">0</div>
+        <div class="stat-l">Created</div>
+      </div>
+      <div class="stat">
+        <div class="stat-n" id="s-updated" style="color:var(--warn)">0</div>
+        <div class="stat-l">Updated</div>
+      </div>
+      <div class="stat">
+        <div class="stat-n" id="s-failed" style="color:var(--danger)">0</div>
+        <div class="stat-l">Failed</div>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="table-top">
+        <h3>Block Details</h3>
+        <div class="tabs">
+          <button class="tab on"  onclick="setFilter('all',     this)">All</button>
+          <button class="tab"     onclick="setFilter('created', this)">Created</button>
+          <button class="tab"     onclick="setFilter('updated', this)">Updated</button>
+          <button class="tab"     onclick="setFilter('failed',  this)">Failed</button>
+        </div>
+      </div>
+      <div class="tbl-wrap" id="tbl-wrap">
+        <div class="empty">No data yet.</div>
+      </div>
+    </div>
+
+    <div class="export-row">
+      <button class="btn-sec" onclick="exportCSV()">Export CSV</button>
+      <button class="btn-sec" onclick="exportJSON()">Export JSON</button>
+    </div>
+
+  </div>
+
+</main>
+
+<script>
+// ── State ────────────────────────────────────────────────
+let report = [];
+let activeFilter = 'all';
+let _userEmail = '';
+
+// ── Log ─────────────────────────────────────────────────
+function ts() { return new Date().toTimeString().slice(0,8); }
+
+function log(msg, cls = 'ld') {
+  const box = document.getElementById('log');
+  const el = document.createElement('div');
+  el.className = 'll';
+  el.innerHTML = `<span class="lt">${ts()}</span><span class="${cls}">${esc(msg)}</span>`;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+function resetLog() {
+  document.getElementById('log').innerHTML =
+    '<div class="ll"><span class="ld">// Log cleared</span></div>';
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+}
+
+// ── Progress ─────────────────────────────────────────────
+function setProgress(pct, label) {
+  const pl = document.getElementById('prog-label');
+  const pt = document.getElementById('prog-track');
+  const pf = document.getElementById('prog-fill');
+  pl.style.display = 'block';
+  pt.style.display = 'block';
+  pf.style.width   = pct + '%';
+  pl.textContent   = label;
+}
+function hideProgress() {
+  document.getElementById('prog-label').style.display = 'none';
+  document.getElementById('prog-track').style.display = 'none';
+}
+
+// ── UI state ─────────────────────────────────────────────
+function setBusy(on) {
+  const btn = document.getElementById('btn-run');
+  btn.disabled = on;
+  document.getElementById('spinner').style.display = on ? 'block' : 'none';
+  document.getElementById('btn-lbl').textContent   = on ? 'Running…' : 'Run Migration';
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── API helpers ──────────────────────────────────────────
+function authHeader(app, key) {
+  return 'Basic ' + btoa(`${app}:${key}`);
+}
+
+// Safely stringify any caught value to a readable message
+function errMsg(e) {
+  if (!e) return 'Unknown error';
+  if (typeof e === 'string') return e;
+  if (e instanceof Error) return e.message || String(e);
+  if (typeof e === 'object') {
+    const m = e.message || e.description || e.title || e.error;
+    if (m) return typeof m === 'string' ? m : JSON.stringify(m);
+    return JSON.stringify(e);
+  }
+  return String(e);
+}
+
+async function moeFetch(endpoint, dc, app, key, body) {
+  const res = await fetch(endpoint, {
+    method : 'POST',
+    headers: {
+      'Content-Type'  : 'application/json',
+      'Authorization' : authHeader(app, key),
+      'MOE-APPKEY'    : app,
+      'X-Moe-Dc'      : dc,
+    },
+    body: JSON.stringify(body),
+  });
+  let json;
+  try { json = await res.json(); } catch { json = {}; }
+  if (!res.ok) {
+    let msg = json.description || json.title || `HTTP ${res.status}`;
+    if (typeof msg !== 'string') msg = JSON.stringify(msg);
+    throw new Error(`HTTP ${res.status} — ${msg}`);
+  }
+  return json;
+}
+
+// Fetch all blocks from source (status filter)
+async function fetchSourceIndex(dc, app, key, inclArchived) {
+  const status = inclArchived ? ['ACTIVE','ARCHIVED'] : ['ACTIVE'];
+  const data = await moeFetch('/cb-search', dc, app, key, { filters: { status } });
+  return data.data || [];
+}
+
+// Fetch full content in batches
+async function fetchFullContent(dc, app, key, ids) {
+  const BATCH = 20;
+  let all = [];
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const batch = ids.slice(i, i + BATCH);
+    const data  = await moeFetch('/cb-get-ids', dc, app, key,
+      { ids: batch, is_raw_content_required: true });
+    all = all.concat(data.data || []);
+    log(`  Fetched content: ${all.length} / ${ids.length}`, 'ld');
+    if (i + BATCH < ids.length) await sleep(120);
+  }
+  return all;
+}
+
+// Check if block exists in target (exact name match)
+async function existsInTarget(dc, app, key, name) {
+  const data = await moeFetch('/cb-search', dc, app, key,
+    { filters: { search_text: name } });
+  const results = data.data || [];
+  return results.find(b => b.name === name || b.label === name) || null;
+}
+
+// Build create payload
+function buildCreatePayload(block) {
+  const p = {
+    name               : block.name,
+    label              : block.label || block.name.toLowerCase().replace(/\s+/g,'_'),
+    description        : block.description || '',
+    content_type       : block.content_type,
+    raw_content        : block.raw_content || block.content || '',
+    status             : block.status || 'ACTIVE',
+    created_by         : _userEmail || 'migration@tool',
+    images_used        : block.images_used || [],
+    content_block_used : [],
+  };
+  if (block.tag_ids  && block.tag_ids.length)          p.tag_ids  = block.tag_ids;
+  if (block.team_ids && !block.team_ids.includes('0')) p.team_ids = block.team_ids;
+  return p;
+}
+
+function buildUpdatePayload(block, targetId) {
+  return {
+    id                 : targetId,
+    name               : block.name,
+    status             : block.status || 'ACTIVE',
+    raw_content        : block.raw_content || block.content || '',
+    updated_by         : _userEmail || 'migration@tool',
+    content_block_used : [],
+  };
+}
+
+// keep alias so log lines that call buildPayload still work
+function buildPayload(block) { return buildCreatePayload(block); }
+
+async function createBlock(dc, app, key, block) {
+  return moeFetch('/cb-create', dc, app, key, buildCreatePayload(block));
+}
+
+async function updateBlock(dc, app, key, block, targetId) {
+  return moeFetch('/cb-update', dc, app, key, buildUpdatePayload(block, targetId));
+}
+
+// ── Shared config reader ─────────────────────────────────
+function readConfig() {
+  return {
+    srcDc   : '101',
+    srcApp  : document.getElementById('src-app').value.trim(),
+    srcKey  : document.getElementById('src-key').value.trim(),
+    tgtDc   : '101',
+    tgtApp  : document.getElementById('tgt-app').value.trim(),
+    tgtKey  : document.getElementById('tgt-key').value.trim(),
+    dryRun  : false,
+    inclArch: document.getElementById('opt-archived').checked,
+    htmlOnly: false,
+    userEmail: document.getElementById('user-email').value.trim(),
+    nameFilter: document.getElementById('opt-names').value
+      .split(',').map(s => s.trim()).filter(Boolean),
+  };
+}
+
+// ── PHASE 1 — Preflight (analyse only, nothing written) ──
+let preflightResult = null; // { blocks, toCreate, toUpdate, cfg }
+
+async function runPreflight() {
+  const cfg = readConfig();
+
+  if (!cfg.srcApp || !cfg.srcKey || !cfg.tgtApp || !cfg.tgtKey) {
+    log('✗  Fill in all Workspace ID and API Key fields for both environments.', 'le');
+    return;
+  }
+  if (!cfg.userEmail || !cfg.userEmail.toLowerCase().endsWith('@t-mobile.com')) {
+    const em = document.getElementById('user-email');
+    em.style.borderColor = 'var(--danger)';
+    em.style.boxShadow   = '0 0 0 3px rgba(248,113,113,.18)';
+    em.focus();
+    setTimeout(() => { em.style.borderColor = 'var(--border2)'; em.style.boxShadow = 'none'; }, 2500);
+    log('✗  A valid @t-mobile.com email address is required.', 'le');
+    return;
+  }
+  if (cfg.srcDc === cfg.tgtDc && cfg.srcApp === cfg.tgtApp) {
+    log('✗  Source and target appear to be the same workspace. Aborting.', 'le');
+    return;
+  }
+  if (!cfg.nameFilter.length) {
+    const ta = document.getElementById('opt-names');
+    ta.style.borderColor = 'var(--danger)';
+    ta.style.boxShadow   = '0 0 0 3px rgba(248,113,113,.18)';
+    ta.focus();
+    setTimeout(() => { ta.style.borderColor = 'var(--border2)'; ta.style.boxShadow = 'none'; }, 2500);
+    log('✗  Block names are required. Enter at least one block name to migrate.', 'le');
+    return;
+  }
+
+  _userEmail = cfg.userEmail;
+  preflightResult = null;
+  setBusy(true);
+  report = [];
+  document.getElementById('preflight-section').classList.add('hidden');
+  document.getElementById('report-section').classList.add('hidden');
+
+  try {
+    // Fetch source index
+    log(`Analysing source  DC ${cfg.srcDc} · ${cfg.srcApp}`, 'li');
+    setProgress(5, 'Fetching source content block list…');
+
+    let index;
+    try {
+      index = await fetchSourceIndex(cfg.srcDc, cfg.srcApp, cfg.srcKey, cfg.inclArch);
+    } catch (e) {
+      log(`✗  Source search failed: ${errMsg(e)}`, 'le');
+      setBusy(false); hideProgress(); return;
+    }
+    log(`Found ${index.length} block(s) in source.`, 'lok');
+
+    // Fetch full content
+    setProgress(15, `Fetching content for ${index.length} blocks…`);
+    log('Fetching full content (batches of 20)…', 'li');
+    let blocks;
+    try {
+      blocks = await fetchFullContent(cfg.srcDc, cfg.srcApp, cfg.srcKey, index.map(b => b.id));
+    } catch (e) {
+      log(`✗  get-by-ids failed: ${errMsg(e)}`, 'le');
+      setBusy(false); hideProgress(); return;
+    }
+    log(`Content fetched for ${blocks.length} block(s).`, 'lok');
+
+    // Apply name filter
+    const nameSet = new Set(cfg.nameFilter.map(n => n.toLowerCase()));
+    const before  = blocks.length;
+    blocks = blocks.filter(b => nameSet.has((b.name || '').toLowerCase()));
+    log(`Name filter: ${before} → ${blocks.length} matched of ${cfg.nameFilter.length} requested.`, 'lsk');
+    const found = new Set(blocks.map(b => b.name.toLowerCase()));
+    cfg.nameFilter.forEach(n => {
+      if (!found.has(n.toLowerCase()))
+        log(`  ⚠  "${n}" not found in source — will be skipped.`, 'lsk');
+    });
+
+    if (!blocks.length) {
+      log('No blocks matched. Check block names and try again.', 'lsk');
+      setBusy(false); hideProgress(); return;
+    }
+
+    // HTML-only filter
+    if (cfg.htmlOnly) {
+      const b2 = blocks.length;
+      blocks = blocks.filter(b => b.content_type === 'HTML');
+      if (b2 !== blocks.length)
+        log(`HTML-only filter: ${b2} → ${blocks.length} block(s).`, 'lsk');
+    }
+
+    // Check each block in target
+    setProgress(40, `Checking ${blocks.length} blocks against target…`);
+    log(`Checking target  DC ${cfg.tgtDc} · ${cfg.tgtApp}`, 'li');
+    const toCreate = [], toUpdate = [], notFound = [];
+    const total = blocks.length;
+
+    for (let i = 0; i < total; i++) {
+      const block = blocks[i];
+      setProgress(40 + Math.round((i / total) * 55), `Checking: ${block.name}`);
+      try {
+        const exists = await existsInTarget(cfg.tgtDc, cfg.tgtApp, cfg.tgtKey, block.name);
+        if (exists) {
+          toUpdate.push({ block, targetId: exists.id });
+          log(`  ~ EXISTS   "${block.name}"  → will update  (id: ${exists.id})`, 'lsk');
+        } else {
+          toCreate.push({ block });
+          log(`  + NEW      "${block.name}"  → will create`, 'li');
+        }
+      } catch (e) {
+        notFound.push({ block, err: errMsg(e) });
+        log(`  ✗ CHECK ERR "${block.name}"  — ${errMsg(e)}`, 'le');
+      }
+      await sleep(80);
+    }
+
+    setProgress(100, 'Analysis complete — review and proceed.');
+    log('', 'ld');
+    log(`Analysis done — New: ${toCreate.length}  |  Update: ${toUpdate.length}  |  Errors: ${notFound.length}`, 'lok');
+
+    preflightResult = { blocks, toCreate, toUpdate, notFound, cfg };
+    renderPreflightReport(preflightResult);
+
+  } catch (e) {
+    log(`✗  Unexpected error: ${errMsg(e)}`, 'le');
+  }
+
+  setBusy(false);
+  setTimeout(hideProgress, 2000);
+}
+
+// ── PHASE 2 — Execute migration ──────────────────────────
+async function executeMigration() {
+  if (!preflightResult) return;
+  const { toCreate, toUpdate, notFound, cfg } = preflightResult;
+
+  document.getElementById('preflight-section').classList.add('hidden');
+  report = [];
+  setBusy(true);
+  document.getElementById('report-section').classList.add('hidden');
+
+  const dryRun = cfg.dryRun;
+  log('', 'ld');
+  log(`Starting migration${dryRun ? '  [DRY RUN]' : ''}  —  ${toCreate.length} to create, ${toUpdate.length} to update`, 'li');
+
+  let created = 0, updated = 0, failed = 0;
+  const all   = [...toCreate.map(x => ({ ...x, action: 'create' })),
+                 ...toUpdate.map(x => ({ ...x, action: 'update' }))];
+  const total = all.length;
+
+  for (let i = 0; i < total; i++) {
+    const { block, targetId, action } = all[i];
+    setProgress(Math.round(((i + 1) / total) * 100),
+      `[${i+1}/${total}]  ${action === 'create' ? 'Creating' : 'Updating'}: ${block.name}`);
+
+    if (dryRun) {
+      const verb = action === 'create' ? 'CREATED' : 'UPDATED';
+      log(`✓  DRY RUN  "${block.name}"  — would be ${verb}`, 'lok');
+      report.push({ name: block.name, label: block.label, type: block.content_type,
+        status: action === 'create' ? 'created' : 'updated',
+        reason: `Dry run — would have been ${verb.toLowerCase()}` });
+      action === 'create' ? created++ : updated++;
+      continue;
+    }
+
+    try {
+      if (action === 'create') {
+        const cp = buildCreatePayload(block);
+        log(`  → CREATE payload: ${JSON.stringify(cp)}`, 'ld');
+        await createBlock(cfg.tgtDc, cfg.tgtApp, cfg.tgtKey, block);
+        log(`✓  CREATED  "${block.name}"  (${block.content_type})`, 'lok');
+        report.push({ name: block.name, label: block.label, type: block.content_type,
+          status: 'created', reason: 'Successfully created in target' });
+        created++;
+      } else {
+        const up = buildUpdatePayload(block, targetId);
+        log(`  → UPDATE payload: ${JSON.stringify(up)}`, 'ld');
+        await updateBlock(cfg.tgtDc, cfg.tgtApp, cfg.tgtKey, block, targetId);
+        log(`↺  UPDATED  "${block.name}"  (${block.content_type})`, 'lsk');
+        report.push({ name: block.name, label: block.label, type: block.content_type,
+          status: 'updated', reason: `Updated existing block  id: ${targetId}` });
+        updated++;
+      }
+    } catch (e) {
+      log(`✗  FAIL     "${block.name}"  — ${errMsg(e)}`, 'le');
+      report.push({ name: block.name, label: block.label, type: block.content_type,
+        status: 'failed', reason: `${action === 'create' ? 'Create' : 'Update'} failed: ${errMsg(e)}` });
+      failed++;
+    }
+    await sleep(150);
+  }
+
+  // Add check errors as failed in report
+  notFound.forEach(({ block, err }) => {
+    report.push({ name: block.name, label: block.label, type: block.content_type,
+      status: 'failed', reason: `Target check error: ${err}` });
+    failed++;
+  });
+
+  setProgress(100, 'Migration complete!');
+  log('', 'ld');
+  log(`✓  Done — Created: ${created}  |  Updated: ${updated}  |  Failed: ${failed}${dryRun ? '  [DRY RUN]' : ''}`, dryRun ? 'li' : 'lok');
+
+  renderFinalReport(total + notFound.length, created, updated, failed);
+  setBusy(false);
+  setTimeout(hideProgress, 2500);
+}
+
+// ── Preflight report UI ──────────────────────────────────
+function renderPreflightReport({ toCreate, toUpdate, notFound, cfg }) {
+  const dryRun = cfg.dryRun;
+
+  const makeRows = (items, label, pillClass, icon) =>
+    items.length === 0 ? '' : `
+      <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+        color:var(--muted);padding:10px 14px 6px;border-bottom:1px solid var(--border);">${icon} ${label} (${items.length})</div>
+      ${items.map(({ block, targetId, err }) => `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;
+          border-bottom:1px solid var(--border);font-size:12.5px;">
+          <span class="pill ${pillClass}" style="flex-shrink:0;">${icon}</span>
+          <span style="font-family:var(--mono);font-size:11.5px;flex:1;min-width:0;
+            overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(block.name)}</span>
+          <span class="pill ${block.content_type === 'HTML' ? 'p-html' : 'p-text'}"
+            style="flex-shrink:0;">${esc(block.content_type)}</span>
+          ${targetId ? `<span style="font-size:11px;color:var(--muted);flex-shrink:0;">id: ${esc(targetId)}</span>` : ''}
+          ${err      ? `<span style="font-size:11px;color:var(--danger);flex-shrink:0;">${esc(err)}</span>` : ''}
+        </div>`).join('')}`;
+
+  const sec = document.getElementById('preflight-section');
+  sec.innerHTML = `
+    <div class="section-label" style="margin-top:28px;">Pre-Migration Analysis</div>
+    <div class="table-card" style="margin-bottom:14px;">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--border);">
+        <div style="padding:14px 18px;border-right:1px solid var(--border);">
+          <div style="font-size:26px;font-weight:700;color:var(--success);">${toCreate.length}</div>
+          <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-top:2px;">Will be created</div>
+        </div>
+        <div style="padding:14px 18px;border-right:1px solid var(--border);">
+          <div style="font-size:26px;font-weight:700;color:var(--warn);">${toUpdate.length}</div>
+          <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-top:2px;">Will be updated</div>
+        </div>
+        <div style="padding:14px 18px;">
+          <div style="font-size:26px;font-weight:700;color:var(--danger);">${notFound.length}</div>
+          <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-top:2px;">Check errors</div>
+        </div>
+      </div>
+      <div style="max-height:340px;overflow-y:auto;">
+        ${makeRows(toCreate, 'New — will be created', 'p-created', '+')}
+        ${makeRows(toUpdate, 'Existing — will be updated', 'p-updated', '↺')}
+        ${makeRows(notFound, 'Check errors — will be skipped', 'p-failed', '✗')}
+        ${(toCreate.length + toUpdate.length + notFound.length) === 0
+          ? '<div class="empty">Nothing to migrate.</div>' : ''}
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      ${(toCreate.length + toUpdate.length) > 0 ? `
+        <button class="btn-primary" onclick="executeMigration()">
+          <span>${dryRun ? 'Proceed (Dry Run)' : 'Proceed with Migration'}</span>
+        </button>` : ''}
+      <button class="btn-sec" onclick="cancelPreflight()">Cancel</button>
+      ${dryRun ? `<span style="font-size:12px;color:var(--warn);">Dry Run — nothing will actually be written</span>` : ''}
+    </div>`;
+
+  sec.classList.remove('hidden');
+  sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelPreflight() {
+  preflightResult = null;
+  document.getElementById('preflight-section').classList.add('hidden');
+  log('Migration cancelled.', 'lsk');
+}
+
+// ── Final report rendering ───────────────────────────────
+function renderFinalReport(total, created, updated, failed) {
+  document.getElementById('s-total').textContent   = total;
+  document.getElementById('s-created').textContent = created;
+  document.getElementById('s-updated').textContent = updated;
+  document.getElementById('s-failed').textContent  = failed;
+
+  activeFilter = 'all';
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  document.querySelector('.tab').classList.add('on');
+
+  renderTable();
+  const sec = document.getElementById('report-section');
+  sec.classList.remove('hidden');
+  sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function setFilter(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  btn.classList.add('on');
+  renderTable();
+}
+
+function renderTable() {
+  const rows = activeFilter === 'all'
+    ? report
+    : report.filter(r => r.status === activeFilter);
+
+  const wrap = document.getElementById('tbl-wrap');
+  if (!rows.length) {
+    wrap.innerHTML = `<div class="empty">No blocks in "${activeFilter}" category.</div>`;
+    return;
+  }
+
+  const icon  = { created: '+', updated: '↺', failed: '✗' };
+  const label = { created: 'created', updated: 'updated', failed: 'failed' };
+  wrap.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th class="col-n">Block Name</th>
+          <th class="col-t">Type</th>
+          <th class="col-s">Outcome</th>
+          <th class="col-r">Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td class="col-n" style="font-family:var(--mono);font-size:11.5px;">${esc(r.name)}</td>
+            <td class="col-t">
+              <span class="pill ${r.type === 'HTML' ? 'p-html' : 'p-text'}">${esc(r.type || '—')}</span>
+            </td>
+            <td class="col-s">
+              <span class="pill p-${r.status}">${icon[r.status] || '?'} ${label[r.status] || r.status}</span>
+            </td>
+            <td class="col-r" style="color:var(--muted);font-size:12px;">${esc(r.reason)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ── Export ───────────────────────────────────────────────
+function exportCSV() {
+  const hdr  = 'Name,Label,Type,Status,Details\n';
+  const rows = report.map(r =>
+    [r.name, r.label, r.type, r.status, r.reason]
+      .map(v => `"${String(v||'').replace(/"/g,'""')}"`)
+      .join(',')
+  ).join('\n');
+  download('moe_cb_migration_report.csv', 'text/csv', '\uFEFF' + hdr + rows);
+}
+
+function exportJSON() {
+  download('moe_cb_migration_report.json', 'application/json',
+    JSON.stringify({ generated: new Date().toISOString(), count: report.length, data: report }, null, 2));
+}
+
+function download(name, mime, content) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type: mime }));
+  a.download = name;
+  a.click();
+}
+</script>
 </body>
 </html>
