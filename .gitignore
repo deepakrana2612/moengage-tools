@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+client/node_modules/
+
+# Environment secrets — NEVER commit this
+.env
+
+# React production build (Render builds this fresh each deploy)
+client/build/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
