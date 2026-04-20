@@ -32,6 +32,26 @@
       margin-bottom: 16px;
     }
 
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      max-width: 960px;
+      margin-bottom: 40px;
+    }
+
+    .logout {
+      font-size: 12px;
+      color: #444;
+      text-decoration: none;
+      border: 1px solid #222;
+      padding: 6px 14px;
+      border-radius: 6px;
+      transition: color .2s, border-color .2s;
+    }
+    .logout:hover { color: #e20074; border-color: #e20074; }
+
     h1 {
       font-size: 38px;
       font-weight: 700;
@@ -125,11 +145,21 @@
   </style>
 </head>
 <body>
-  <header>
-    <div class="logo">T-Mobile · MoEngage</div>
-    <h1>Marketing <span>Utility</span> Suite</h1>
-    <p>Internal tools for the MarTech & Campaign Operations team</p>
-  </header>
+  <div class="header-row">
+    <header>
+      <div class="logo">T-Mobile · MoEngage</div>
+      <h1>Marketing <span>Utility</span> Suite</h1>
+      <p>Internal tools for the MarTech & Campaign Operations team</p>
+    </header>
+    <div style="display:flex;gap:10px;align-items:center">
+      <a class="logout" href="/admin" id="adminLink" style="display:none">⚙️ Admin</a>
+      <a class="logout" href="/logout">Sign out</a>
+    </div>
+  </div>
+  <script>
+    // Show admin link only if user is admin
+    fetch('/admin/users').then(r => { if (r.ok) document.getElementById('adminLink').style.display = 'inline-block'; });
+  </script>
 
   <div class="grid">
 
@@ -140,18 +170,11 @@
       <span class="tag">React App · Create / Update</span>
     </a>
 
-    <a class="card" href="/content-audit.html">
-      <div class="card-icon">🔍</div>
-      <h2>Campaign Content Audit</h2>
-      <p>Search across 2,500+ campaign setups for specific text strings across Email, SMS, and Push channels. Multi-term search with CSV export.</p>
-      <span class="tag">Static Tool · CSV Export</span>
-    </a>
-
     <a class="card" href="/content-block-search.html">
-      <div class="card-icon">📦</div>
-      <h2>Content Block Search</h2>
-      <p>Find specific text within MoEngage content blocks. Useful for auditing reusable content across campaigns before making changes.</p>
-      <span class="tag">Static Tool · Block-Level</span>
+      <div class="card-icon">🔍</div>
+      <h2>Content Block & Campaign Search</h2>
+      <p>Search across content blocks and 2,500+ campaigns (Email, SMS, Push) for specific text. Switch between modes via the tab switcher. Multi-term search with CSV export.</p>
+      <span class="tag">Content Blocks · Campaigns · CSV Export</span>
     </a>
 
     <a class="card" href="/token-manager.html">
