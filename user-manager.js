@@ -47,7 +47,7 @@ function findUser(username) {
 function validateCredentials(username, password) {
   const user = findUser(username);
   if (!user) return null;
-  const hash = hashPassword(password);
+  const hash = hashPassword(password, username.toLowerCase());
   return hash === user.password ? user : null;
 }
 
