@@ -161,43 +161,8 @@
     fetch('/admin/users').then(r => { if (r.ok) document.getElementById('adminLink').style.display = 'inline-block'; });
   </script>
 
-  <div class="grid">
-
-    <a class="card" href="/template-builder">
-      <div class="card-icon">✉️</div>
-      <h2>Email Template Builder</h2>
-      <p>Create and update MoEngage custom email templates with Jinja2 rendering, rich text editing, and language-specific base template support.</p>
-      <span class="tag">React App · Create / Update</span>
-    </a>
-
-    <a class="card" href="/content-block-search.html">
-      <div class="card-icon">🔍</div>
-      <h2>Content Block & Campaign Search</h2>
-      <p>Search across content blocks and 2,500+ campaigns (Email, SMS, Push) for specific text. Switch between modes via the tab switcher. Multi-term search with CSV export.</p>
-      <span class="tag">Content Blocks · Campaigns · CSV Export</span>
-    </a>
-
-    <a class="card" href="/token-manager.html">
-      <div class="card-icon">🔐</div>
-      <h2>Token Manager</h2>
-      <p>Paste Bearer and Refresh tokens from the Flow UI. Handles auto-refresh and proxies authenticated requests to any custom OAuth API.</p>
-      <span class="tag">Auth · Bearer + Refresh</span>
-    </a>
-
-    <a class="card" href="/cb-migrator.html">
-      <div class="card-icon">🚚</div>
-      <h2>Content Block Migration</h2>
-      <p>Migrate content blocks between MoEngage environments. Skips duplicates and generates a detailed report of what was created and what was skipped.</p>
-      <span class="tag">Source → Target · Report</span>
-    </a>
-
-    <a class="card" href="/flow-review.html">
-      <div class="card-icon">🔬</div>
-      <h2>Flow Action Nodes Review</h2>
-      <p>Fetch the full JSON of any Flow version by entering the Flow ID and version number. Inspect action nodes, segments, and campaign config.</p>
-      <span class="tag">Bearer Token · Version JSON</span>
-    </a>
-
+  <div class="grid" id="toolsGrid">
+    <div style="grid-column:1/-1;text-align:center;padding:40px;color:#444;font-size:14px">Loading your tools…</div>
   </div>
 
   <div class="health-bar">
@@ -206,5 +171,31 @@
     <a href="/health">View health check</a> ·
     Built for T-Mobile Internal Use
   </div>
-</body>
-</html>
+
+  <script>
+    async function loadDashboard() {
+      const res  = await fetch('/api/my-tools');
+      if (!res.ok) { window.location.href = '/login'; return; }
+      const { tools, isAdmin, displayName } = await res.json();
+
+      // Show admin link
+      if (isAdmin) document.getElementById('adminLink').style.display = 'inline-block';
+
+      // Render tool cards
+      const grid = document.getElementById('toolsGrid');
+      if (!tools.length) {
+        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#444;font-size:14px">No tools assigned yet. Contact your admin.</div>';
+        return;
+      }
+
+      grid.innerHTML = tools.map(t => `
+        <a class="card" href="${t.url}">
+          <div class="card-icon">${t.icon}</div>
+          <h2>${t.name}</h2>
+          <p>${t.description}</p>
+        </a>
+      `).join('');
+    }
+
+    loadDashboard();
+  </script>
