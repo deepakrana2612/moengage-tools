@@ -24,6 +24,7 @@ const crypto      = require("crypto");
 const rateLimit   = require("express-rate-limit");
 const tokenAuth   = require("./token-auth");
 const userManager = require("./user-manager");
+const toolsReg    = require("./tools-registry");
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -58,6 +59,15 @@ function getCurrentUser(req) {
   return userManager.findUser(session.username);
 }
 
+// Check if user has access to a specific tool
+function userCanAccessTool(user, toolId) {
+  if (!user) return false;
+  if (user.isAdmin) return true;
+  if (!user.allowedTools || user.allowedTools.length === 0) return false;
+  if (user.allowedTools.includes("all")) return true;
+  return user.allowedTools.includes(toolId);
+}
+
 // ─── Auth Middleware ──────────────────────────────────────────────────────────
 const AUTH_ENABLED = userManager.getUsers().length > 0;
 
@@ -66,15 +76,41 @@ const PUBLIC_PATHS = ["/login", "/logout", "/reset-password", "/forgot-password"
 app.use((req, res, next) => {
   if (!AUTH_ENABLED) return next();
   if (PUBLIC_PATHS.some(p => req.path.startsWith(p))) return next();
+
   const session = getSession(req);
   if (!session) return res.redirect("/login");
 
-  // Force password reset if flagged
   const user = userManager.findUser(session.username);
-  if (user?.mustReset && req.path !== "/reset-password") {
+
+  // Force password reset
+  if (user?.mustReset && !req.path.startsWith("/reset-password")) {
     const token = userManager.createResetToken(session.username);
     return res.redirect(`/reset-password?token=${token}&required=1`);
   }
+
+  // Tool access check for HTML pages
+  if (req.method === "GET" && req.path.endsWith(".html")) {
+    const file = req.path.slice(1); // strip leading /
+    const tool = toolsReg.getByHtmlFile(file);
+    if (tool && !userCanAccessTool(user, tool.id)) {
+      return res.status(403).send(`<!DOCTYPE html><html><head><title>Access Denied</title>
+        <style>body{font-family:sans-serif;background:#0a0a0a;color:#f5f5f5;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center}
+        .card{background:#141414;border:1px solid #222;border-radius:14px;padding:40px;max-width:400px}
+        h2{color:#fff;margin-bottom:10px}p{color:#666;margin-bottom:20px}a{color:#e20074;text-decoration:none}</style></head>
+        <body><div class="card"><h2>🚫 Access Denied</h2>
+        <p>You don't have access to <strong style="color:#fff">${tool.name}</strong>.<br>Contact your admin to request access.</p>
+        <a href="/">← Back to Dashboard</a></div></body></html>`);
+    }
+  }
+
+  // Tool access check for API routes
+  if (toolsReg.isGatedRoute(req.path)) {
+    const tool = toolsReg.getByApiRoute(req.path);
+    if (tool && !userCanAccessTool(user, tool.id)) {
+      return res.status(403).json({ error: `Access denied — you don't have access to ${tool.name}.` });
+    }
+  }
+
   next();
 });
 
@@ -244,17 +280,34 @@ app.post("/reset-password", async (req, res) => {
 // ─── Admin Routes ─────────────────────────────────────────────────────────────
 app.get("/admin", adminOnly, (_req, res) => res.sendFile(path.join(__dirname, "public", "admin.html")));
 
+// List all tools (used by admin UI to render checkboxes)
+app.get("/admin/tools", adminOnly, (_req, res) => {
+  res.json(toolsReg.getAll().map(({ id, name, description, icon }) => ({ id, name, description, icon })));
+});
+
 app.get("/admin/users", adminOnly, (_req, res) => {
-  const users = userManager.getUsers().map(({ password: _, ...u }) => u); // strip password
+  const users = userManager.getUsers().map(({ password: _, ...u }) => u);
   res.json(users);
 });
 
 app.post("/admin/users", adminOnly, async (req, res) => {
-  const { username, email, displayName, isAdmin } = req.body;
+  const { username, email, displayName, isAdmin, allowedTools = [] } = req.body;
   if (!username || !email) return res.status(400).json({ error: "username and email are required." });
   try {
-    const { user } = await userManager.createUser({ username, email, displayName, isAdmin });
+    const { user } = await userManager.createUser({ username, email, displayName, isAdmin, allowedTools });
     res.json({ ok: true, username: user.username, note: "Welcome email sent." });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Update tool access for a user
+app.put("/admin/users/:username/tools", adminOnly, async (req, res) => {
+  const { allowedTools } = req.body;
+  if (!Array.isArray(allowedTools)) return res.status(400).json({ error: "allowedTools must be an array." });
+  try {
+    await userManager.updateUserTools(req.params.username, allowedTools);
+    res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -278,6 +331,16 @@ app.post("/admin/users/:username/reset", adminOnly, async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// API for dashboard — returns tools the current user can access
+app.get("/api/my-tools", (req, res) => {
+  const user = getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "Not logged in." });
+  const allTools = toolsReg.getAll();
+  const accessible = allTools.filter(t => userCanAccessTool(user, t.id))
+    .map(({ id, name, description, icon, url }) => ({ id, name, description, icon, url }));
+  res.json({ tools: accessible, isAdmin: !!user.isAdmin, displayName: user.displayName });
 });
 
 
@@ -447,7 +510,222 @@ app.post("/api/cb/create", apiLimiter, async (req, res) => {
   }
 });
 
-// ─── Content Block + Campaign Search (content_block_search.html) ─────────────
+// ─── Email Template Builder Routes  /api/template/* ──────────────────────────
+// Credentials passed as x-app-id / x-api-key headers from the UI.
+
+const MOE_BASE          = "https://api-101.moengage.com";
+const BASE_TEMPLATE_EN  = "1775486412749";   // English base template ID
+const BASE_TEMPLATE_ES  = "1775486412749";   // Spanish — update if different
+
+function templateHeaders(req) {
+  const appId  = req.headers["x-app-id"]  || "";
+  const apiKey = req.headers["x-api-key"] || "";
+  return {
+    Authorization:  basicAuth(appId, apiKey),
+    "Content-Type": "application/json",
+    "MOE-APPID":    appId,
+  };
+}
+
+// Simple Jinja2-style variable substitution (server-side)
+function renderJinja(html, vars) {
+  let out = html;
+  // Replace {{ variable }} with value
+  out = out.replace(/{{\s*([\w]+)\s*}}/g, (_, key) =>
+    vars[key] !== undefined ? String(vars[key]) : ""
+  );
+  // Handle {% if variable %}...{% endif %} blocks
+  out = out.replace(/{%\s*if\s+([\w]+)\s*%}([\s\S]*?){%\s*endif\s*%}/g, (_, key, block) =>
+    vars[key] ? block : ""
+  );
+  return out;
+}
+
+// GET /api/template/fetch-base?language=English
+// Fetches the base template HTML from MoEngage
+app.get("/api/template/fetch-base", apiLimiter, async (req, res) => {
+  const appId  = req.headers["x-app-id"];
+  const apiKey = req.headers["x-api-key"];
+  if (!appId || !apiKey) return missingCreds(res);
+
+  const lang       = req.query.language === "Spanish" ? "Spanish" : "English";
+  const templateId = lang === "Spanish" ? BASE_TEMPLATE_ES : BASE_TEMPLATE_EN;
+
+  try {
+    const response = await axios.post(
+      `${MOE_BASE}/v1.0/custom-templates/email/search`,
+      { page: 1, entries: 1, template_id: templateId },
+      { headers: templateHeaders(req), timeout: 30000 }
+    );
+    const template = response.data?.data?.[0];
+    if (!template) return res.status(404).json({ error: "Base template not found." });
+
+    // Decode email_content (MoEngage returns it encoded)
+    let html = template.basic_details?.email_content || "";
+    try { html = JSON.parse(`"${html.replace(/"/g, '\\"')}"`); } catch { /* use as-is */ }
+
+    res.json({ html, templateId });
+  } catch (err) {
+    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
+  }
+});
+
+// POST /api/template/preview
+// Render base template with provided variables server-side
+app.post("/api/template/preview", apiLimiter, async (req, res) => {
+  const appId  = req.headers["x-app-id"];
+  const apiKey = req.headers["x-api-key"];
+  if (!appId || !apiKey) return missingCreds(res);
+
+  const { templateVariables, language } = req.body;
+  if (!templateVariables) return res.status(400).json({ error: "templateVariables required." });
+
+  try {
+    // Fetch base template
+    const lang       = language === "Spanish" ? "Spanish" : "English";
+    const templateId = lang === "Spanish" ? BASE_TEMPLATE_ES : BASE_TEMPLATE_EN;
+    const response   = await axios.post(
+      `${MOE_BASE}/v1.0/custom-templates/email/search`,
+      { page: 1, entries: 1, template_id: templateId },
+      { headers: templateHeaders(req), timeout: 30000 }
+    );
+    let html = response.data?.data?.[0]?.basic_details?.email_content || "";
+    try { html = JSON.parse(`"${html.replace(/"/g, '\\"')}"`); } catch { /* use as-is */ }
+
+    const rendered = renderJinja(html, templateVariables);
+    res.json({ html: rendered });
+  } catch (err) {
+    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
+  }
+});
+
+// POST /api/template/create
+app.post("/api/template/create", apiLimiter, async (req, res) => {
+  const appId  = req.headers["x-app-id"];
+  const apiKey = req.headers["x-api-key"];
+  if (!appId || !apiKey) return missingCreds(res);
+
+  const { templateVariables, language, templateName, subject, userEmail, previewText } = req.body;
+  if (!templateVariables || !templateName || !subject || !userEmail) {
+    return res.status(400).json({ error: "templateVariables, templateName, subject, userEmail required." });
+  }
+
+  try {
+    // 1. Fetch base template
+    const lang       = language === "Spanish" ? "Spanish" : "English";
+    const templateId = lang === "Spanish" ? BASE_TEMPLATE_ES : BASE_TEMPLATE_EN;
+    const baseRes    = await axios.post(
+      `${MOE_BASE}/v1.0/custom-templates/email/search`,
+      { page: 1, entries: 1, template_id: templateId },
+      { headers: templateHeaders(req), timeout: 30000 }
+    );
+    let html = baseRes.data?.data?.[0]?.basic_details?.email_content || "";
+    try { html = JSON.parse(`"${html.replace(/"/g, '\\"')}"`); } catch { /* use as-is */ }
+
+    // 2. Render Jinja variables
+    const rendered = renderJinja(html, templateVariables);
+
+    // 3. Create template in MoEngage
+    const payload = {
+      basic_details: {
+        email_content: rendered,
+        subject,
+        thumbnail_url: "https://image-101.moengage.com/campaigns/preview/custom_templates/campaign_core/xNlgKdPK.png",
+        sender_name:   "T-Mobile",
+        preview_text:  previewText || "",
+      },
+      meta_info: {
+        communication_type: "INFORM",
+        created_by:         userEmail,
+        template_id:        templateName,
+        template_name:      templateName,
+        template_version:   "v1",
+      },
+    };
+
+    const createRes = await axios.post(
+      `${MOE_BASE}/v1.0/custom-templates/email`,
+      payload,
+      { headers: templateHeaders(req), timeout: 30000 }
+    );
+    res.status(createRes.status).json(createRes.data);
+  } catch (err) {
+    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
+  }
+});
+
+// POST /api/template/search  — find a template by template_id to get external_template_id
+app.post("/api/template/search", apiLimiter, async (req, res) => {
+  const appId  = req.headers["x-app-id"];
+  const apiKey = req.headers["x-api-key"];
+  if (!appId || !apiKey) return missingCreds(res);
+
+  try {
+    const response = await axios.post(
+      `${MOE_BASE}/v1.0/custom-templates/email/search`,
+      req.body,
+      { headers: templateHeaders(req), timeout: 30000 }
+    );
+    res.status(response.status).json(response.data);
+  } catch (err) {
+    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
+  }
+});
+
+// POST /api/template/update
+app.post("/api/template/update", apiLimiter, async (req, res) => {
+  const appId  = req.headers["x-app-id"];
+  const apiKey = req.headers["x-api-key"];
+  if (!appId || !apiKey) return missingCreds(res);
+
+  const { templateVariables, language, templateName, subject, userEmail, previewText, externalTemplateId } = req.body;
+  if (!templateVariables || !templateName || !subject || !userEmail || !externalTemplateId) {
+    return res.status(400).json({ error: "templateVariables, templateName, subject, userEmail, externalTemplateId required." });
+  }
+
+  try {
+    // 1. Fetch & render base template
+    const lang       = language === "Spanish" ? "Spanish" : "English";
+    const templateId = lang === "Spanish" ? BASE_TEMPLATE_ES : BASE_TEMPLATE_EN;
+    const baseRes    = await axios.post(
+      `${MOE_BASE}/v1.0/custom-templates/email/search`,
+      { page: 1, entries: 1, template_id: templateId },
+      { headers: templateHeaders(req), timeout: 30000 }
+    );
+    let html = baseRes.data?.data?.[0]?.basic_details?.email_content || "";
+    try { html = JSON.parse(`"${html.replace(/"/g, '\\"')}"`); } catch { /* use as-is */ }
+    const rendered = renderJinja(html, templateVariables);
+
+    // 2. Update template
+    const payload = {
+      external_template_id: externalTemplateId,
+      basic_details: {
+        email_content: rendered,
+        subject,
+        thumbnail_url: "https://image-101.moengage.com/campaigns/preview/custom_templates/campaign_core/xNlgKdPK.png",
+        sender_name:   "T-Mobile",
+        preview_text:  previewText || "",
+      },
+      meta_info: {
+        template_name: templateName,
+        updated_by:    userEmail,
+      },
+      update_campaigns:      true,
+      update_latest_version: true,
+    };
+
+    const updateRes = await axios.put(
+      `${MOE_BASE}/v1.0/custom-templates/email`,
+      payload,
+      { headers: templateHeaders(req), timeout: 30000 }
+    );
+    res.status(updateRes.status).json(updateRes.data);
+  } catch (err) {
+    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
+  }
+});
+
+
 // This single utility handles both modes via a tab switcher.
 // Credentials passed as headers: Authorization (Basic) + MOE-APPKEY
 
@@ -487,8 +765,26 @@ app.post("/proxy-get-ids", apiLimiter, async (req, res) => {
   }
 });
 
+// Campaign search — 25 req/min, then 30s forced wait before next batch
+const campaignSearchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 25,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+  message: {
+    error: "Rate limit reached (25 requests/min). Please wait 30 seconds before retrying.",
+    retryAfter: 30,
+    waitSeconds: 30,
+  },
+  handler: (req, res, next, options) => {
+    res.setHeader("Retry-After", 30);
+    res.status(429).json(options.message);
+  },
+});
+
 // Campaign search (Email / SMS / Push across all campaigns)
-app.post("/proxy-campaigns", apiLimiter, async (req, res) => {
+app.post("/proxy-campaigns", campaignSearchLimiter, async (req, res) => {
   try {
     const response = await axios.post(
       `${MOE_API_BASE}/core-services/v1/campaigns/search`,
