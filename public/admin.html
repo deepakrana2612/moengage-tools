@@ -114,6 +114,12 @@
           <span>Grant admin access (can manage users)</span>
         </div>
       </div>
+      <div class="field full" id="toolsField">
+        <label>Tool Access</label>
+        <div id="toolCheckboxes" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px">
+          <span style="color:#555;font-size:13px">Loading tools…</span>
+        </div>
+      </div>
     </div>
     <div class="btn-row">
       <button class="btn-primary" onclick="createUser()">➕ Create User & Send Email</button>
@@ -147,6 +153,8 @@
 <div id="toast"></div>
 
 <script>
+  let allTools = [];
+
   function toast(msg, type = 'info') {
     const el = document.getElementById('toast');
     el.textContent = msg;
@@ -154,8 +162,26 @@
     setTimeout(() => el.className = '', 3500);
   }
 
+  async function loadTools() {
+    const res = await fetch('/admin/tools');
+    allTools  = await res.json();
+    const container = document.getElementById('toolCheckboxes');
+    container.innerHTML = allTools.map(t => `
+      <label style="display:flex;align-items:center;gap:8px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;color:#aaa">
+        <input type="checkbox" name="tool" value="${t.id}" style="accent-color:#e20074;cursor:pointer"/>
+        ${t.icon} ${t.name}
+      </label>
+    `).join('');
+
+    // Hide tool checkboxes when admin is checked
+    document.getElementById('isAdmin').addEventListener('change', e => {
+      document.getElementById('toolsField').style.opacity = e.target.checked ? '0.4' : '1';
+      document.getElementById('toolsField').style.pointerEvents = e.target.checked ? 'none' : 'auto';
+    });
+  }
+
   async function loadUsers() {
-    const res  = await fetch('/admin/users');
+    const res   = await fetch('/admin/users');
     const users = await res.json();
     const tbody = document.getElementById('usersTable');
 
@@ -173,7 +199,8 @@
         <td>${u.mustReset ? '<span class="badge badge-reset">Must Reset</span>' : '<span style="color:#555;font-size:12px">Active</span>'}</td>
         <td>
           <div class="action-row">
-            <button class="btn-secondary btn-sm" onclick="sendReset('${u.username}')">✉️ Reset Link</button>
+            <button class="btn-secondary btn-sm" onclick="manageTools('${u.username}', ${JSON.stringify(u.allowedTools || [])})">🛠 Tools</button>
+            <button class="btn-secondary btn-sm" onclick="sendReset('${u.username}')">✉️ Reset</button>
             <button class="btn-danger btn-sm" onclick="deleteUser('${u.username}')">🗑</button>
           </div>
         </td>
@@ -186,13 +213,15 @@
     const email       = document.getElementById('email').value.trim();
     const displayName = document.getElementById('displayName').value.trim();
     const isAdmin     = document.getElementById('isAdmin').checked;
+    const allowedTools = isAdmin ? ["all"] :
+      [...document.querySelectorAll('input[name="tool"]:checked')].map(el => el.value);
 
     if (!username || !email) return toast('Username and email are required.', 'error');
 
     const res  = await fetch('/admin/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, displayName, isAdmin })
+      body: JSON.stringify({ username, email, displayName, isAdmin, allowedTools })
     });
     const data = await res.json();
 
@@ -202,10 +231,53 @@
       document.getElementById('email').value       = '';
       document.getElementById('displayName').value = '';
       document.getElementById('isAdmin').checked   = false;
+      document.querySelectorAll('input[name="tool"]').forEach(el => el.checked = false);
       loadUsers();
     } else {
       toast(`❌ ${data.error}`, 'error');
     }
+  }
+
+  // Tool assignment modal (inline panel)
+  function manageTools(username, currentTools) {
+    const isAll = currentTools.includes('all');
+    const panel = `
+      <div id="toolPanel" style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100">
+        <div style="background:#141414;border:1px solid #333;border-radius:16px;padding:32px;max-width:480px;width:100%;margin:20px">
+          <h3 style="color:#fff;font-size:16px;margin-bottom:6px">🛠 Tool Access — ${username}</h3>
+          <p style="color:#666;font-size:13px;margin-bottom:20px">Select which tools this user can access.</p>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px">
+            ${allTools.map(t => `
+              <label style="display:flex;align-items:center;gap:10px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:10px 14px;cursor:pointer">
+                <input type="checkbox" class="tool-assign" value="${t.id}" ${isAll || currentTools.includes(t.id) ? 'checked' : ''} style="accent-color:#e20074;width:16px;height:16px;cursor:pointer"/>
+                <span style="font-size:16px">${t.icon}</span>
+                <div>
+                  <div style="color:#fff;font-size:13px;font-weight:600">${t.name}</div>
+                  <div style="color:#555;font-size:12px">${t.description}</div>
+                </div>
+              </label>
+            `).join('')}
+          </div>
+          <div style="display:flex;gap:10px">
+            <button class="btn-primary" onclick="saveTools('${username}')">💾 Save Access</button>
+            <button class="btn-secondary" onclick="document.getElementById('toolPanel').remove()">Cancel</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend', panel);
+  }
+
+  async function saveTools(username) {
+    const selected = [...document.querySelectorAll('.tool-assign:checked')].map(el => el.value);
+    const res  = await fetch(`/admin/users/${username}/tools`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allowedTools: selected })
+    });
+    const data = await res.json();
+    document.getElementById('toolPanel')?.remove();
+    if (res.ok) { toast(`✅ Access updated for ${username}`, 'success'); loadUsers(); }
+    else        toast(`❌ ${data.error}`, 'error');
   }
 
   async function sendReset(username) {
@@ -223,6 +295,7 @@
     else        toast(`❌ ${data.error}`, 'error');
   }
 
+  loadTools();
   loadUsers();
 </script>
 </body>
