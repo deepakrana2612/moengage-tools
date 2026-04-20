@@ -1,21 +1,26 @@
-# render.yaml — Render.com deployment blueprint
-# Push this file to your GitHub repo root.
-# On Render: New → Blueprint → connect repo → deploy.
-
 services:
   - type: web
     name: moengage-tools
     env: node
     region: oregon
-    plan: free               # upgrade to 'starter' ($7/mo) for always-on
-
+    plan: free
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /health
-
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3000
-      # No MoEngage credentials needed — passed per-request from the UI
+      - key: APP_URL
+        value: https://moengage-tools.onrender.com
+      - key: APP_USERS
+        sync: false          # set manually — bootstrap first admin here
+      - key: RENDER_API_KEY
+        sync: false
+      - key: RENDER_SERVICE_ID
+        sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
