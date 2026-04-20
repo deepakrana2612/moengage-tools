@@ -124,20 +124,21 @@ async function syncToRender(users) {
 
 // ─── User CRUD ────────────────────────────────────────────────────────────────
 
-async function createUser({ username, email, displayName, isAdmin = false }) {
+async function createUser({ username, email, displayName, isAdmin = false, allowedTools = [] }) {
   if (findUser(username)) {
     throw new Error(`Username "${username}" already exists.`);
   }
 
   const plainPassword = generatePassword();
   const user = {
-    username:    username.trim().toLowerCase(),
-    password:    hashPassword(plainPassword, username.trim().toLowerCase()),
-    email:       email.trim(),
-    displayName: displayName?.trim() || username,
-    isAdmin:     !!isAdmin,
-    mustReset:   true,   // force password reset on first login
-    createdAt:   new Date().toISOString(),
+    username:     username.trim().toLowerCase(),
+    password:     hashPassword(plainPassword, username.trim().toLowerCase()),
+    email:        email.trim(),
+    displayName:  displayName?.trim() || username,
+    isAdmin:      !!isAdmin,
+    allowedTools: isAdmin ? ["all"] : allowedTools, // admins get everything
+    mustReset:    true,
+    createdAt:    new Date().toISOString(),
   };
 
   const updated = [..._users, user];
@@ -151,6 +152,17 @@ async function deleteUser(username) {
   const before = _users.length;
   const updated = _users.filter(u => u.username !== username.toLowerCase());
   if (updated.length === before) throw new Error(`User "${username}" not found.`);
+  await syncToRender(updated);
+}
+
+async function updateUserTools(username, allowedTools) {
+  const exists = _users.find(u => u.username === username.toLowerCase());
+  if (!exists) throw new Error(`User "${username}" not found.`);
+  const updated = _users.map(u =>
+    u.username === username.toLowerCase()
+      ? { ...u, allowedTools }
+      : u
+  );
   await syncToRender(updated);
 }
 
@@ -279,6 +291,7 @@ module.exports = {
   validateCredentials,
   createUser,
   deleteUser,
+  updateUserTools,
   updatePassword,
   createResetToken,
   validateResetToken,
