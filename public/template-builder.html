@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Email Template Builder — MoEngage Tools</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--mg:#E20074;--bg:#0a0a0a;--surface:#141414;--surface2:#1a1a1a;--border:#222;--border2:#2a2a2a;--text:#f5f5f5;--muted:#888;--radius:10px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{background:var(--mg);padding:0 24px;height:52px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(226,0,116,.3)}
+header h1{font-size:16px;font-weight:600;color:#fff}
+.back{color:rgba(255,255,255,.7);text-decoration:none;font-size:13px}
+.back:hover{color:#fff}
+.main{display:grid;grid-template-columns:340px 1fr;gap:0;min-height:calc(100vh - 52px)}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:24px;overflow-y:auto;height:calc(100vh - 52px);position:sticky;top:52px}
+.content{padding:28px;overflow-y:auto}
+
+/* Mode toggle */
+.mode-toggle{display:flex;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);padding:4px;margin-bottom:24px;gap:4px}
+.mode-btn{flex:1;padding:8px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;background:none;color:var(--muted);transition:all .2s}
+.mode-btn.active{background:var(--mg);color:#fff}
+
+/* Sections */
+.section{margin-bottom:20px}
+.section-title{font-size:11px;font-weight:600;color:#555;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.field{margin-bottom:14px}
+label{display:block;font-size:11px;font-weight:600;color:#666;letter-spacing:.8px;text-transform:uppercase;margin-bottom:5px}
+input[type=text],input[type=email],textarea,select{width:100%;background:#0d0d0d;border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:13px;padding:9px 12px;outline:none;transition:border-color .2s;font-family:inherit}
+input:focus,textarea:focus,select:focus{border-color:var(--mg)}
+textarea{resize:vertical;min-height:70px;line-height:1.5}
+.hint{font-size:11px;color:#444;margin-top:4px}
+
+/* Lang pills */
+.lang-row{display:flex;gap:8px;margin-bottom:4px}
+.lang-pill{flex:1;padding:8px;border:1px solid var(--border2);border-radius:8px;text-align:center;font-size:13px;cursor:pointer;background:#0d0d0d;color:var(--muted);transition:all .2s}
+.lang-pill.active{border-color:var(--mg);background:#1a0010;color:#fff}
+
+/* Toggle switch */
+.toggle-row{display:flex;align-items:center;justify-content:space-between}
+.switch{position:relative;width:38px;height:20px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:#2a2a2a;border-radius:20px;cursor:pointer;transition:.3s}
+.slider:before{content:"";position:absolute;width:14px;height:14px;left:3px;top:3px;background:#888;border-radius:50%;transition:.3s}
+input:checked+.slider{background:var(--mg)}
+input:checked+.slider:before{transform:translateX(18px);background:#fff}
+
+/* Buttons */
+.btn-row{display:flex;gap:10px;margin-top:20px}
+button{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:opacity .2s,transform .1s}
+button:active{transform:scale(.97)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:var(--mg);color:#fff}
+.btn-primary:hover:not(:disabled){opacity:.88}
+.btn-secondary{background:#1e1e1e;color:var(--muted);border:1px solid var(--border2)}
+.btn-secondary:hover:not(:disabled){color:#fff;border-color:#444}
+
+/* Preview panel */
+.preview-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.preview-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.preview-header h3{font-size:14px;font-weight:600;color:#ccc}
+.preview-frame{width:100%;min-height:600px;border:none;background:#fff}
+.preview-empty{display:flex;align-items:center;justify-content:center;min-height:400px;color:#444;font-size:14px;flex-direction:column;gap:12px}
+.preview-empty .icon{font-size:40px;opacity:.3}
+
+/* Result banner */
+.result{border-radius:10px;padding:14px 18px;margin-top:20px;font-size:13px;line-height:1.6;display:none}
+.result.show{display:block}
+.result.success{background:#0a1a0a;border:1px solid #1a3a1a;color:#86efac}
+.result.error{background:#1a0a0a;border:1px solid #3a1515;color:#fca5a5}
+
+/* Spinner */
+.spin{animation:spin .8s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Lookup row */
+.lookup-row{display:flex;gap:8px}
+.lookup-row input{flex:1}
+.lookup-row button{flex-shrink:0;padding:9px 14px}
+.found-badge{background:#0a1a0a;border:1px solid #1a3a1a;border-radius:8px;padding:8px 12px;font-size:12px;color:#86efac;margin-top:6px;font-family:monospace;display:none}
+.found-badge.show{display:block}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="/">←</a>
+  <h1>✉️ Email Template Builder</h1>
+</header>
+
+<div class="main">
+<!-- ── Sidebar (form) ── -->
+<aside class="sidebar">
+
+  <!-- Mode -->
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="btnCreate" onclick="setMode('create')">➕ Create</button>
+    <button class="mode-btn" id="btnUpdate" onclick="setMode('update')">✏️ Update</button>
+  </div>
+
+  <!-- Credentials -->
+  <div class="section">
+    <div class="section-title">Credentials</div>
+    <div class="field"><label>App ID</label><input type="text" id="appId" placeholder="your-app-id" autocomplete="off"/></div>
+    <div class="field"><label>API Key</label><input type="text" id="apiKey" placeholder="your-api-key" autocomplete="off"/></div>
+    <div class="field"><label>User Email</label><input type="email" id="userEmail" placeholder="you@t-mobile.com"/></div>
+  </div>
+
+  <!-- Template Identity -->
+  <div class="section">
+    <div class="section-title">Template Identity</div>
+    <div class="field"><label>Template Name</label><input type="text" id="templateName" placeholder="e.g. PostpaidServiceEN"/><div class="hint">Used as template_id in MoEngage</div></div>
+
+    <!-- Update only: lookup by template_id -->
+    <div class="field" id="lookupField" style="display:none">
+      <label>Existing Template ID (to update)</label>
+      <div class="lookup-row">
+        <input type="text" id="lookupId" placeholder="e.g. PostpaidServiceEN"/>
+        <button class="btn-secondary" onclick="lookupTemplate()">🔍</button>
+      </div>
+      <div class="found-badge" id="foundBadge"></div>
+      <div class="hint">Enter the template_id and click 🔍 to find its external ID</div>
+    </div>
+  </div>
+
+  <!-- Language -->
+  <div class="section">
+    <div class="section-title">Language</div>
+    <div class="lang-row">
+      <div class="lang-pill active" id="langEN" onclick="setLang('English')">🇺🇸 English</div>
+      <div class="lang-pill" id="langES" onclick="setLang('Spanish')">🇪🇸 Español</div>
+    </div>
+  </div>
+
+  <!-- Email Content -->
+  <div class="section">
+    <div class="section-title">Email Content</div>
+    <div class="field"><label>Subject Line</label><input type="text" id="subject" placeholder="Your T-Mobile update"/></div>
+    <div class="field"><label>Preheader / Preview Text</label><input type="text" id="preheader" placeholder="Short inbox preview…"/></div>
+    <div class="field"><label>Headline</label><input type="text" id="headline" placeholder="Main headline copy"/></div>
+    <div class="field"><label>Body Copy 1</label><textarea id="bodyCopy1" placeholder="First body paragraph…"></textarea></div>
+    <div class="field"><label>Body Copy 2</label><textarea id="bodyCopy2" placeholder="Second body paragraph…"></textarea></div>
+    <div class="field"><label>CTA Text</label><input type="text" id="ctaText" placeholder="Learn More"/></div>
+    <div class="field"><label>CTA URL</label><input type="text" id="ctaUrl" placeholder="https://t-mobile.com/…"/></div>
+  </div>
+
+  <!-- Dynamic Card -->
+  <div class="section">
+    <div class="section-title">
+      <div class="toggle-row">
+        <span>Dynamic Card</span>
+        <label class="switch"><input type="checkbox" id="cardEnabled" onchange="toggleCard()"/><span class="slider"></span></label>
+      </div>
+    </div>
+    <div id="cardFields" style="display:none">
+      <div class="field"><label>Desktop Image URL</label><input type="text" id="cardDesktopImg" placeholder="https://…"/></div>
+      <div class="field"><label>Mobile Image URL</label><input type="text" id="cardMobileImg" placeholder="https://…"/></div>
+      <div class="field"><label>Card Headline</label><input type="text" id="cardHeadline"/></div>
+      <div class="field"><label>Card Body Copy</label><textarea id="cardBodyCopy"></textarea></div>
+      <div class="field"><label>Card CTA Text</label><input type="text" id="cardCtaText"/></div>
+      <div class="field"><label>Card CTA URL</label><input type="text" id="cardCtaUrl" placeholder="https://…"/></div>
+    </div>
+  </div>
+
+  <!-- Social Footer -->
+  <div class="section">
+    <div class="section-title">
+      <div class="toggle-row">
+        <span>Social Footer</span>
+        <label class="switch"><input type="checkbox" id="socialFooter"/><span class="slider"></span></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="btn-row">
+    <button class="btn-secondary" onclick="previewTemplate()">👁 Preview</button>
+    <button class="btn-primary" id="submitBtn" onclick="submitTemplate()">
+      <span id="submitLabel">➕ Create Template</span>
+    </button>
+  </div>
+
+  <div class="result" id="result"></div>
+
+</aside>
+
+<!-- ── Preview Panel ── -->
+<div class="content">
+  <div class="preview-panel">
+    <div class="preview-header">
+      <h3>Preview</h3>
+      <span id="previewLang" style="font-size:12px;color:#555">English</span>
+    </div>
+    <div id="previewArea">
+      <div class="preview-empty">
+        <div class="icon">✉️</div>
+        <div>Fill in the form and click <strong>Preview</strong></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+  let currentMode     = 'create';
+  let currentLang     = 'English';
+  let externalId      = null;
+
+  function creds() {
+    return {
+      appId:  document.getElementById('appId').value.trim(),
+      apiKey: document.getElementById('apiKey').value.trim(),
+    };
+  }
+
+  function headers() {
+    const { appId, apiKey } = creds();
+    return { 'Content-Type': 'application/json', 'x-app-id': appId, 'x-api-key': apiKey };
+  }
+
+  function getVars() {
+    return {
+      preheader:    document.getElementById('preheader').value.trim(),
+      subjectLine:  document.getElementById('subject').value.trim(),
+      headline:     document.getElementById('headline').value.trim(),
+      bodyCopy1:    document.getElementById('bodyCopy1').value.trim(),
+      bodyCopy2:    document.getElementById('bodyCopy2').value.trim(),
+      ctaText:      document.getElementById('ctaText').value.trim(),
+      ctaURL:       document.getElementById('ctaUrl').value.trim(),
+      cardEnabled:  document.getElementById('cardEnabled').checked,
+      desktopImgCardURL: document.getElementById('cardDesktopImg').value.trim(),
+      mobImgCardURL:     document.getElementById('cardMobileImg').value.trim(),
+      cardHeadline:      document.getElementById('cardHeadline').value.trim(),
+      cardBodyCopy:      document.getElementById('cardBodyCopy').value.trim(),
+      cardCTAText:       document.getElementById('cardCtaText').value.trim(),
+      cardCTAURL:        document.getElementById('cardCtaUrl').value.trim(),
+      socialFooter:      document.getElementById('socialFooter').checked,
+    };
+  }
+
+  function setMode(mode) {
+    currentMode = mode;
+    document.getElementById('btnCreate').classList.toggle('active', mode === 'create');
+    document.getElementById('btnUpdate').classList.toggle('active', mode === 'update');
+    document.getElementById('lookupField').style.display = mode === 'update' ? 'block' : 'none';
+    document.getElementById('submitLabel').textContent = mode === 'create' ? '➕ Create Template' : '✏️ Update Template';
+    externalId = null;
+    document.getElementById('foundBadge').classList.remove('show');
+  }
+
+  function setLang(lang) {
+    currentLang = lang;
+    document.getElementById('langEN').classList.toggle('active', lang === 'English');
+    document.getElementById('langES').classList.toggle('active', lang === 'Spanish');
+    document.getElementById('previewLang').textContent = lang;
+  }
+
+  function toggleCard() {
+    document.getElementById('cardFields').style.display =
+      document.getElementById('cardEnabled').checked ? 'block' : 'none';
+  }
+
+  function showResult(msg, type) {
+    const el = document.getElementById('result');
+    el.textContent = msg;
+    el.className = `result show ${type}`;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  async function lookupTemplate() {
+    const { appId, apiKey } = creds();
+    if (!appId || !apiKey) return showResult('Enter App ID and API Key first.', 'error');
+    const tid = document.getElementById('lookupId').value.trim();
+    if (!tid) return showResult('Enter a template ID to look up.', 'error');
+
+    const res  = await fetch('/api/template/search', {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ page: 1, entries: 1, template_id: tid })
+    });
+    const data = await res.json();
+    const template = data?.data?.[0];
+    if (!template) return showResult('Template not found. Check the template ID.', 'error');
+
+    externalId = template.basic_details?.external_template_id || template._id;
+    const badge = document.getElementById('foundBadge');
+    badge.textContent = `✅ Found: external_id = ${externalId}`;
+    badge.classList.add('show');
+  }
+
+  async function previewTemplate() {
+    const { appId, apiKey } = creds();
+    if (!appId || !apiKey) return showResult('Enter credentials first.', 'error');
+
+    const area = document.getElementById('previewArea');
+    area.innerHTML = '<div class="preview-empty"><div class="spin">⏳</div><div>Rendering preview…</div></div>';
+
+    const res  = await fetch('/api/template/preview', {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ templateVariables: getVars(), language: currentLang })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      area.innerHTML = `<div class="preview-empty"><div>❌ ${data.error || 'Preview failed'}</div></div>`;
+      return;
+    }
+
+    const iframe = document.createElement('iframe');
+    iframe.className = 'preview-frame';
+    area.innerHTML = '';
+    area.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(data.html);
+    iframe.contentDocument.close();
+
+    // Auto-resize
+    setTimeout(() => {
+      iframe.style.height = iframe.contentDocument.body.scrollHeight + 'px';
+    }, 300);
+  }
+
+  async function submitTemplate() {
+    const { appId, apiKey } = creds();
+    if (!appId || !apiKey) return showResult('Enter credentials first.', 'error');
+
+    const templateName = document.getElementById('templateName').value.trim();
+    const subject      = document.getElementById('subject').value.trim();
+    const userEmail    = document.getElementById('userEmail').value.trim();
+
+    if (!templateName || !subject || !userEmail) {
+      return showResult('Template name, subject line, and user email are required.', 'error');
+    }
+
+    if (currentMode === 'update' && !externalId) {
+      return showResult('Look up the existing template first using the 🔍 button.', 'error');
+    }
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin">⏳</span> Processing…';
+
+    const endpoint = currentMode === 'create' ? '/api/template/create' : '/api/template/update';
+    const body = {
+      templateVariables: getVars(),
+      language:          currentLang,
+      templateName,
+      subject,
+      userEmail,
+      previewText: document.getElementById('preheader').value.trim(),
+      ...(currentMode === 'update' && { externalTemplateId: externalId }),
+    };
+
+    const res  = await fetch(endpoint, { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+    const data = await res.json();
+
+    btn.disabled = false;
+    btn.innerHTML = currentMode === 'create' ? '➕ Create Template' : '✏️ Update Template';
+
+    if (res.ok) {
+      const id = data?.data?.external_template_id || data?.data?.id || '';
+      showResult(`✅ Template ${currentMode === 'create' ? 'created' : 'updated'} successfully!${id ? ` ID: ${id}` : ''}`, 'success');
+    } else {
+      showResult(`❌ ${data?.message || data?.error || 'Request failed'}`, 'error');
+    }
+  }
+</script>
+</body>
+</html>
