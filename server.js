@@ -375,7 +375,7 @@ app.use(express.json({ limit: "10mb" }));
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 25,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Rate limit reached. Please wait before retrying.", retryAfter: 60 },
@@ -765,26 +765,8 @@ app.post("/proxy-get-ids", apiLimiter, async (req, res) => {
   }
 });
 
-// Campaign search — 25 req/min, then 30s forced wait before next batch
-const campaignSearchLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 25,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skipSuccessfulRequests: false,
-  message: {
-    error: "Rate limit reached (25 requests/min). Please wait 30 seconds before retrying.",
-    retryAfter: 30,
-    waitSeconds: 30,
-  },
-  handler: (req, res, next, options) => {
-    res.setHeader("Retry-After", 30);
-    res.status(429).json(options.message);
-  },
-});
-
 // Campaign search (Email / SMS / Push across all campaigns)
-app.post("/proxy-campaigns", campaignSearchLimiter, async (req, res) => {
+app.post("/proxy-campaigns", apiLimiter, async (req, res) => {
   try {
     const response = await axios.post(
       `${MOE_API_BASE}/core-services/v1/campaigns/search`,
