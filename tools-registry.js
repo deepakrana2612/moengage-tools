@@ -43,6 +43,15 @@ const TOOLS = [
     htmlFile:    "flow-review.html",
     apiRoutes:   ["/api/flow"],
   },
+  {
+  id:          "user-attr-updater",
+  name:        "User Attribute Updater",
+  description: "Fetch a user by ID and update any standard or custom attribute.",
+  url:         "/user-attr-updater.html",
+  icon:        "✏️",
+  htmlFile:    "user-attr-updater.html",
+  apiRoutes:   ["/api/user-updater"],
+},
 ];
 
 // Quick lookups
