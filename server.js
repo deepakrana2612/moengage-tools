@@ -117,8 +117,67 @@ app.use('/api/auth', tokenAuth.router);
 app.use('/api/flow', tokenAuth.flowProxy);
 
 // ─── User Attribute Updater ───────────────────────────────────────────────────
-const userAttrUpdater = require('./routes/user-attr-updater');
-app.use('/api/user-updater', userAttrUpdater);
+
+function userUpdaterCreds(req) {
+  const appId  = (req.headers['x-app-id']  || '').trim();
+  const apiKey = (req.headers['x-api-key'] || '').trim();
+  return (appId && apiKey) ? { appId, apiKey } : null;
+}
+
+function userUpdaterLog(label, method, url, body, status, response) {
+  const ts = new Date().toISOString().replace('T', ' ').slice(0, 23);
+  console.log(`\n${'─'.repeat(60)}`);
+  console.log(`[${ts}] → ${label}`);
+  console.log(`  ${method} ${url}`);
+  console.log(`  BODY:`, JSON.stringify(body, null, 2));
+  console.log(`[${ts}] ← HTTP ${status}`);
+  console.log(`  RESP:`, JSON.stringify(response, null, 2));
+  console.log(`${'─'.repeat(60)}\n`);
+}
+
+// POST /api/user-updater/get-user
+app.post('/api/user-updater/get-user', async (req, res) => {
+  const creds = userUpdaterCreds(req);
+  if (!creds) return missingCreds(res);
+  const { appId, apiKey } = creds;
+  const url  = `${MOE_API_BASE}/v1/customers/export?app_id=${appId}`;
+  const body = req.body;
+  try {
+    const resp = await axios.post(url, body, {
+      headers: moeHeaders(appId, apiKey),
+      validateStatus: () => true,
+    });
+    userUpdaterLog('GET USER', 'POST', url, body, resp.status, resp.data);
+    res.status(resp.status).json(resp.data);
+  } catch (err) {
+    const status = err.response?.status || 502;
+    const data   = err.response?.data   || { error: err.message };
+    userUpdaterLog('GET USER', 'POST', url, body, status, data);
+    res.status(status).json(data);
+  }
+});
+
+// POST /api/user-updater/update-user
+app.post('/api/user-updater/update-user', async (req, res) => {
+  const creds = userUpdaterCreds(req);
+  if (!creds) return missingCreds(res);
+  const { appId, apiKey } = creds;
+  const url  = `${MOE_API_BASE}/v1/customer/${appId}`;
+  const body = req.body;
+  try {
+    const resp = await axios.post(url, body, {
+      headers: moeHeaders(appId, apiKey),
+      validateStatus: () => true,
+    });
+    userUpdaterLog('UPDATE USER', 'POST', url, body, resp.status, resp.data);
+    res.status(resp.status).json(resp.data);
+  } catch (err) {
+    const status = err.response?.status || 502;
+    const data   = err.response?.data   || { error: err.message };
+    userUpdaterLog('UPDATE USER', 'POST', url, body, status, data);
+    res.status(status).json(data);
+  }
+});
 
 // ─── Content Block Search Utility ─────────────────────────────────────────────
 // Used by content_block_search.html — credentials via Authorization + MOE-APPKEY headers
