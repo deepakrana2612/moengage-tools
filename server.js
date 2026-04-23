@@ -1,891 +1,222 @@
 /**
  * MoEngage Tools — Unified Server
- *
+ * ─────────────────────────────────────────────────────────────────────────────
  * No credentials stored server-side.
- * All Basic Auth routes receive appId + apiKey per request.
+ * All Basic Auth routes receive appId + apiKey per request via x- headers.
  * DC is fixed to 101.
  *
- * Routes:
- *   /api/moengage/*    → Generic MoEngage proxy  (appId/apiKey via x- headers)
- *   /api/audit/search  → Campaign audit search    (appId/apiKey in body)
- *   /api/cb/search     → CB search                (appId/apiKey in body)
- *   /api/cb/get-ids    → CB fetch by IDs          (appId/apiKey in body)
- *   /api/cb/create     → CB create                (appId/apiKey in body)
- *   /api/auth/*        → Token Manager
- *   /api/flow/*        → Flow proxy (Bearer token)
+ * Route map:
+ *   /proxy              → CB search        (Content Block Search utility)
+ *   /proxy-get-ids      → CB get-by-ids    (Content Block Search utility)
+ *   /proxy-campaigns    → Campaign search  (Content Block Search utility)
+ *   /api/cb/search      → CB search        (CB Migrator utility)
+ *   /api/cb/get-ids     → CB get-by-ids    (CB Migrator utility)
+ *   /api/cb/create      → CB create        (CB Migrator utility)
+ *   /api/cb/update      → CB update (PUT)  (CB Migrator utility)
+ *   /api/user-updater/* → User Attribute Updater
+ *   /api/auth/*         → Token Manager (set / status / clear)
+ *   /api/flow/*         → Flow Review proxy (Bearer token)
+ *   /template-builder   → Email Template Builder (React build)
+ *   /                   → Static HTML tools (public/)
  */
 
-require("dotenv").config();
-const express     = require("express");
-const axios       = require("axios");
-const cors        = require("cors");
-const path        = require("path");
-const crypto      = require("crypto");
-const rateLimit   = require("express-rate-limit");
-const tokenAuth   = require("./token-auth");
-const userManager = require("./user-manager");
-const toolsReg    = require("./tools-registry");
+'use strict';
+
+require('dotenv').config();
+
+const express   = require('express');
+const axios     = require('axios');
+const cors      = require('cors');
+const path      = require('path');
+const rateLimit = require('express-rate-limit');
+const tokenAuth = require('./token-auth');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// ─── Load Users ───────────────────────────────────────────────────────────────
-userManager.loadUsers();
-
-// ─── Session Store ────────────────────────────────────────────────────────────
-const sessions   = new Map(); // token → { username, expiry }
-const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
-
-function createSession(username) {
-  const token = crypto.randomBytes(32).toString("hex");
-  sessions.set(token, { username, expiry: Date.now() + SESSION_TTL });
-  return token;
-}
-
-function getSession(req) {
-  const cookie = req.headers.cookie || "";
-  const match  = cookie.match(/(?:^|;\s*)session=([^;]+)/);
-  const token  = match ? match[1] : null;
-  if (!token) return null;
-  const session = sessions.get(token);
-  if (!session) return null;
-  if (Date.now() > session.expiry) { sessions.delete(token); return null; }
-  return session;
-}
-
-function getCurrentUser(req) {
-  const session = getSession(req);
-  if (!session) return null;
-  return userManager.findUser(session.username);
-}
-
-// Check if user has access to a specific tool
-function userCanAccessTool(user, toolId) {
-  if (!user) return false;
-  if (user.isAdmin) return true;
-  if (!user.allowedTools || user.allowedTools.length === 0) return false;
-  if (user.allowedTools.includes("all")) return true;
-  return user.allowedTools.includes(toolId);
-}
-
-// ─── Auth Middleware ──────────────────────────────────────────────────────────
-const AUTH_ENABLED = userManager.getUsers().length > 0;
-
-const PUBLIC_PATHS = ["/login", "/logout", "/reset-password", "/forgot-password"];
-
-app.use((req, res, next) => {
-  if (!AUTH_ENABLED) return next();
-  if (PUBLIC_PATHS.some(p => req.path.startsWith(p))) return next();
-
-  const session = getSession(req);
-  if (!session) return res.redirect("/login");
-
-  const user = userManager.findUser(session.username);
-
-  // Force password reset
-  if (user?.mustReset && !req.path.startsWith("/reset-password")) {
-    const token = userManager.createResetToken(session.username);
-    return res.redirect(`/reset-password?token=${token}&required=1`);
-  }
-
-  // Tool access check for HTML pages
-  if (req.method === "GET" && req.path.endsWith(".html")) {
-    const file = req.path.slice(1); // strip leading /
-    const tool = toolsReg.getByHtmlFile(file);
-    if (tool && !userCanAccessTool(user, tool.id)) {
-      return res.status(403).send(`<!DOCTYPE html><html><head><title>Access Denied</title>
-        <style>body{font-family:sans-serif;background:#0a0a0a;color:#f5f5f5;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center}
-        .card{background:#141414;border:1px solid #222;border-radius:14px;padding:40px;max-width:400px}
-        h2{color:#fff;margin-bottom:10px}p{color:#666;margin-bottom:20px}a{color:#e20074;text-decoration:none}</style></head>
-        <body><div class="card"><h2>🚫 Access Denied</h2>
-        <p>You don't have access to <strong style="color:#fff">${tool.name}</strong>.<br>Contact your admin to request access.</p>
-        <a href="/">← Back to Dashboard</a></div></body></html>`);
-    }
-  }
-
-  // Tool access check for API routes
-  if (toolsReg.isGatedRoute(req.path)) {
-    const tool = toolsReg.getByApiRoute(req.path);
-    if (tool && !userCanAccessTool(user, tool.id)) {
-      return res.status(403).json({ error: `Access denied — you don't have access to ${tool.name}.` });
-    }
-  }
-
-  next();
-});
-
-// Admin-only middleware
-function adminOnly(req, res, next) {
-  const user = getCurrentUser(req);
-  if (!user?.isAdmin) return res.status(403).send("Forbidden — admin only.");
-  next();
-}
-
-// ─── Body Parsers ─────────────────────────────────────────────────────────────
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: false }));
-
-// ─── Login Page ───────────────────────────────────────────────────────────────
-const LOGIN_PAGE = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>MoEngage Tools — Login</title>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0a0a0a;color:#f5f5f5;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-    .card{background:#141414;border:1px solid #222;border-radius:16px;padding:40px;width:100%;max-width:380px}
-    .logo{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#e20074;font-weight:600;margin-bottom:20px}
-    h1{font-size:22px;font-weight:700;color:#fff;margin-bottom:6px}
-    p{font-size:13px;color:#666;margin-bottom:28px}
-    label{display:block;font-size:11px;font-weight:600;color:#666;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
-    input{width:100%;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;color:#f5f5f5;font-size:14px;padding:11px 13px;outline:none;margin-bottom:16px;transition:border-color .2s}
-    input:focus{border-color:#e20074}
-    button{width:100%;background:#e20074;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;padding:12px;cursor:pointer;transition:opacity .2s}
-    button:hover{opacity:.88}
-    .error{background:#1a0a0a;border:1px solid #3a1515;border-radius:8px;padding:10px 14px;font-size:13px;color:#f87171;margin-bottom:16px;display:none}
-    .error.show{display:block}
-    .forgot{text-align:center;margin-top:16px;font-size:12px;color:#555}
-    .forgot a{color:#e20074;text-decoration:none}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="logo">T-Mobile · MoEngage</div>
-    <h1>Sign in</h1>
-    <p>Internal tools access only.</p>
-    <div class="error" id="err">Incorrect username or password.</div>
-    <form method="POST" action="/login">
-      <label>Username</label>
-      <input type="text" name="username" autocomplete="username" required autofocus/>
-      <label>Password</label>
-      <input type="password" name="password" autocomplete="current-password" required/>
-      <button type="submit">Sign in →</button>
-    </form>
-    <div class="forgot"><a href="/forgot-password">Forgot password?</a></div>
-  </div>
-  <script>if(new URLSearchParams(location.search).get('error'))document.getElementById('err').classList.add('show');</script>
-</body>
-</html>`;
-
-app.get("/login",  (_req, res) => res.send(LOGIN_PAGE));
-
-app.post("/login", (req, res) => {
-  const { username = "", password = "" } = req.body;
-  const user = userManager.validateCredentials(username.trim(), password);
-  if (user) {
-    const token = createSession(user.username);
-    res.setHeader("Set-Cookie", `session=${token}; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL / 1000}; Path=/`);
-    res.redirect("/");
-  } else {
-    res.redirect("/login?error=1");
-  }
-});
-
-app.get("/logout", (req, res) => {
-  const cookie = req.headers.cookie || "";
-  const match  = cookie.match(/(?:^|;\s*)session=([^;]+)/);
-  if (match) sessions.delete(match[1]);
-  res.setHeader("Set-Cookie", "session=; HttpOnly; Max-Age=0; Path=/");
-  res.redirect("/login");
-});
-
-// ─── Forgot Password ──────────────────────────────────────────────────────────
-app.get("/forgot-password", (_req, res) => res.send(`<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/><title>Forgot Password</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0a0a0a;color:#f5f5f5;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:#141414;border:1px solid #222;border-radius:16px;padding:40px;width:100%;max-width:380px}.logo{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#e20074;font-weight:600;margin-bottom:20px}h1{font-size:22px;font-weight:700;color:#fff;margin-bottom:6px}p{font-size:13px;color:#666;margin-bottom:28px}label{display:block;font-size:11px;font-weight:600;color:#666;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}input{width:100%;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;color:#f5f5f5;font-size:14px;padding:11px 13px;outline:none;margin-bottom:16px}input:focus{border-color:#e20074}button{width:100%;background:#e20074;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;padding:12px;cursor:pointer}.msg{border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;display:none}.msg.show{display:block}.msg.ok{background:#0a1a0a;border:1px solid #153515;color:#86efac}.msg.err{background:#1a0a0a;border:1px solid #3a1515;color:#f87171}.back{text-align:center;margin-top:16px;font-size:12px;color:#555}.back a{color:#e20074;text-decoration:none}</style>
-</head><body><div class="card">
-  <div class="logo">T-Mobile · MoEngage</div>
-  <h1>Forgot password</h1>
-  <p>Enter your username and we'll email you a reset link.</p>
-  <div class="msg ok" id="ok">Reset link sent — check your email.</div>
-  <div class="msg err" id="err">Username not found or email not configured.</div>
-  <form id="form">
-    <label>Username</label>
-    <input type="text" id="username" required autofocus/>
-    <button type="submit">Send reset link →</button>
-  </form>
-  <div class="back"><a href="/login">← Back to login</a></div>
-</div>
-<script>
-  document.getElementById('form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const res = await fetch('/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: document.getElementById('username').value }) });
-    document.getElementById(res.ok ? 'ok' : 'err').classList.add('show');
-  });
-</script></body></html>`));
-
-app.post("/forgot-password", async (req, res) => {
-  try {
-    await userManager.sendPasswordResetEmail(req.body.username?.trim());
-    res.json({ ok: true });
-  } catch {
-    res.status(400).json({ error: "User not found or email not configured." });
-  }
-});
-
-// ─── Reset Password ───────────────────────────────────────────────────────────
-app.get("/reset-password", (req, res) => {
-  const { token, required } = req.query;
-  const entry = userManager.validateResetToken(token);
-  if (!entry) return res.send(`<!DOCTYPE html><html><head><title>Link Expired</title><style>body{font-family:sans-serif;background:#0a0a0a;color:#f5f5f5;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center}a{color:#e20074}</style></head><body><h2>Link expired or invalid</h2><p style="color:#666;margin:12px 0">Reset links are valid for 1 hour.</p><a href="/forgot-password">Request a new one →</a></body></html>`);
-
-  res.send(`<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/><title>Set Password</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0a0a0a;color:#f5f5f5;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:#141414;border:1px solid #222;border-radius:16px;padding:40px;width:100%;max-width:380px}.logo{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#e20074;font-weight:600;margin-bottom:20px}h1{font-size:22px;font-weight:700;color:#fff;margin-bottom:6px}p{font-size:13px;color:#666;margin-bottom:28px}label{display:block;font-size:11px;font-weight:600;color:#666;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}input{width:100%;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;color:#f5f5f5;font-size:14px;padding:11px 13px;outline:none;margin-bottom:16px}input:focus{border-color:#e20074}button{width:100%;background:#e20074;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;padding:12px;cursor:pointer}.hint{font-size:12px;color:#555;margin-bottom:16px}.msg{border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;display:none}.msg.show{display:block}.msg.err{background:#1a0a0a;border:1px solid #3a1515;color:#f87171}${required === "1" ? ".notice{background:#0d1a0d;border:1px solid #1a3a1a;border-radius:8px;padding:10px 14px;font-size:12px;color:#86efac;margin-bottom:20px}" : ""}</style>
-</head><body><div class="card">
-  <div class="logo">T-Mobile · MoEngage</div>
-  <h1>Set your password</h1>
-  ${required === "1" ? '<div class="notice">👋 Welcome! Please set a new password to continue.</div>' : ""}
-  <div class="msg err" id="err"></div>
-  <form id="form">
-    <label>New Password</label>
-    <input type="password" id="p1" placeholder="Min 8 characters" required/>
-    <label>Confirm Password</label>
-    <input type="password" id="p2" required/>
-    <p class="hint">Min 8 characters, must include a number or symbol.</p>
-    <button type="submit">Save password →</button>
-  </form>
-</div>
-<script>
-  document.getElementById('form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const p1 = document.getElementById('p1').value;
-    const p2 = document.getElementById('p2').value;
-    const err = document.getElementById('err');
-    err.classList.remove('show');
-    if (p1 !== p2) { err.textContent = 'Passwords do not match.'; err.classList.add('show'); return; }
-    if (p1.length < 8) { err.textContent = 'Min 8 characters required.'; err.classList.add('show'); return; }
-    const res = await fetch('/reset-password', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: '${token}', password: p1 }) });
-    const data = await res.json();
-    if (res.ok) { window.location.href = '/login?reset=1'; }
-    else { err.textContent = data.error || 'Failed. Try again.'; err.classList.add('show'); }
-  });
-</script></body></html>`);
-});
-
-app.post("/reset-password", async (req, res) => {
-  const { token, password } = req.body;
-  const entry = userManager.consumeResetToken(token);
-  if (!entry) return res.status(400).json({ error: "Token expired or invalid." });
-  if (!password || password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
-  try {
-    await userManager.updatePassword(entry.username, password);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── Admin Routes ─────────────────────────────────────────────────────────────
-app.get("/admin", adminOnly, (_req, res) => res.sendFile(path.join(__dirname, "public", "admin.html")));
-
-// List all tools (used by admin UI to render checkboxes)
-app.get("/admin/tools", adminOnly, (_req, res) => {
-  res.json(toolsReg.getAll().map(({ id, name, description, icon }) => ({ id, name, description, icon })));
-});
-
-app.get("/admin/users", adminOnly, (_req, res) => {
-  const users = userManager.getUsers().map(({ password: _, ...u }) => u);
-  res.json(users);
-});
-
-app.post("/admin/users", adminOnly, async (req, res) => {
-  const { username, email, displayName, isAdmin, allowedTools = [] } = req.body;
-  if (!username || !email) return res.status(400).json({ error: "username and email are required." });
-  try {
-    const { user } = await userManager.createUser({ username, email, displayName, isAdmin, allowedTools });
-    res.json({ ok: true, username: user.username, note: "Welcome email sent." });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-// Update tool access for a user
-app.put("/admin/users/:username/tools", adminOnly, async (req, res) => {
-  const { allowedTools } = req.body;
-  if (!Array.isArray(allowedTools)) return res.status(400).json({ error: "allowedTools must be an array." });
-  try {
-    await userManager.updateUserTools(req.params.username, allowedTools);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.delete("/admin/users/:username", adminOnly, async (req, res) => {
-  const me = getCurrentUser(req);
-  if (me?.username === req.params.username) return res.status(400).json({ error: "Cannot delete your own account." });
-  try {
-    await userManager.deleteUser(req.params.username);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.post("/admin/users/:username/reset", adminOnly, async (req, res) => {
-  try {
-    await userManager.sendPasswordResetEmail(req.params.username);
-    res.json({ ok: true, note: "Reset email sent." });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-// API for dashboard — returns tools the current user can access
-app.get("/api/my-tools", (req, res) => {
-  const user = getCurrentUser(req);
-  if (!user) return res.status(401).json({ error: "Not logged in." });
-  const allTools = toolsReg.getAll();
-  const accessible = allTools.filter(t => userCanAccessTool(user, t.id))
-    .map(({ id, name, description, icon, url }) => ({ id, name, description, icon, url }));
-  res.json({ tools: accessible, isAdmin: !!user.isAdmin, displayName: user.displayName });
-});
-
-
-
-
-// DC fixed to 101
-const MOE_API_BASE  = "https://api-101.moengage.com";
+const MOE_API_BASE = 'https://api-101.moengage.com';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function basicAuth(appId, apiKey) {
-  return "Basic " + Buffer.from(`${appId}:${apiKey}`).toString("base64");
+  return 'Basic ' + Buffer.from(`${appId}:${apiKey}`).toString('base64');
 }
 
 function moeHeaders(appId, apiKey) {
   return {
-    Authorization:  basicAuth(appId, apiKey),
-    "Content-Type": "application/json",
-    "MOE-APPID":    appId,
+    'Authorization':  basicAuth(appId, apiKey),
+    'Content-Type':   'application/json',
+    'MOE-APPKEY':     appId,
   };
+}
+
+// Read credentials from x- headers (used by most utilities)
+function credsFromHeaders(req) {
+  const appId  = (req.headers['x-app-id']  || '').trim();
+  const apiKey = (req.headers['x-api-key'] || '').trim();
+  return (appId && apiKey) ? { appId, apiKey } : null;
+}
+
+// Read credentials from request body (used by CB migrator - dual env support)
+function credsFromBody(req, prefix) {
+  const appId  = (req.body[`${prefix}_app_id`]  || req.body.app_id  || '').trim();
+  const apiKey = (req.body[`${prefix}_api_key`] || req.body.api_key || '').trim();
+  return (appId && apiKey) ? { appId, apiKey } : null;
 }
 
 function missingCreds(res) {
-  return res.status(400).json({
-    error: "appId and apiKey are required. Pass them in the request.",
-  });
+  return res.status(401).json({ error: 'Missing credentials. Provide x-app-id and x-api-key headers.' });
 }
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors());
-app.use(express.json({ limit: "10mb" }));
 
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+// ─── Security Headers ─────────────────────────────────────────────────────────
+// Internal tooling — relax CSP defaults so utilities can run inline scripts,
+// open blob windows for CSV export, and fetch from MoEngage APIs over HTTPS.
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "connect-src 'self' https://api-101.moengage.com https://dashboard-101.moengage.com",
+      "img-src 'self' data: blob: https:",
+      "frame-src 'self' blob:",
+      "worker-src 'self' blob:",
+    ].join('; ')
+  );
+  // Allow popup windows opened by the utilities to run scripts
+  res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
+  next();
+});
+
+// ─── Rate Limiter ─────────────────────────────────────────────────────────────
 const apiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 100,
+  windowMs:        60 * 1000,
+  max:             25,
   standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Rate limit reached. Please wait before retrying.", retryAfter: 60 },
+  legacyHeaders:   false,
+  message:         { error: 'Rate limit reached. Please wait before retrying.', retryAfter: 60 },
 });
 
 // ─── Static Files ─────────────────────────────────────────────────────────────
-const reactBuildPath = path.join(__dirname, "client", "build");
-app.use("/template-builder", express.static(reactBuildPath));
-app.get("/template-builder/*", (_req, res) =>
-  res.sendFile(path.join(reactBuildPath, "index.html"))
+const reactBuildPath = path.join(__dirname, 'client', 'build');
+app.use('/template-builder', express.static(reactBuildPath));
+app.get('/template-builder/*', (_req, res) =>
+  res.sendFile(path.join(reactBuildPath, 'index.html'))
 );
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── Generic MoEngage Proxy  /api/moengage/* ─────────────────────────────────
-// Credentials passed as request headers:
-//   x-app-id:  <appId>
-//   x-api-key: <apiKey>
-// This keeps the request body free to be forwarded as-is to MoEngage.
+// ─── Token Auth + Flow Proxy (Bearer token) ───────────────────────────────────
+app.use('/api/auth', tokenAuth.router);
+app.use('/api/flow', tokenAuth.flowProxy);
 
-app.use("/api/moengage/*", apiLimiter);
-app.all("/api/moengage/*", async (req, res) => {
-  const appId  = req.headers["x-app-id"];
-  const apiKey = req.headers["x-api-key"];
-  if (!appId || !apiKey) return missingCreds(res);
+// ─── User Attribute Updater ───────────────────────────────────────────────────
+const userAttrUpdater = require('./routes/user-attr-updater');
+app.use('/api/user-updater', userAttrUpdater);
 
-  const targetPath = req.params[0];
-  const targetUrl  = `${MOE_API_BASE}/${targetPath}`;
+// ─── Content Block Search Utility ─────────────────────────────────────────────
+// Used by content_block_search.html — credentials via Authorization + MOE-APPKEY headers
+// forwarded directly from the browser (utility manages its own auth UI)
 
-  try {
-    const response = await axios({
-      method:  req.method,
-      url:     targetUrl,
-      headers: moeHeaders(appId, apiKey),
-      params:  req.query,
-      data:    req.body,
-      timeout: 30000,
-    });
-    res.status(response.status).json(response.data);
-  } catch (err) {
-    const status = err.response?.status || 500;
-    const data   = err.response?.data   || { error: err.message };
-    if (status === 503) {
-      return res.status(503).json({
-        error: "MoEngage service temporarily unavailable",
-        retryAfter: 5,
-        original: data,
+function proxyMoeRequest(targetUrl, req, res) {
+  let rawBody = '';
+  req.on('data', chunk => { rawBody += chunk; });
+  req.on('end', async () => {
+    try {
+      const resp = await axios.post(targetUrl, rawBody, {
+        headers: {
+          'Content-Type':   'application/json',
+          'Authorization':  req.headers['authorization'] || '',
+          'MOE-APPKEY':     req.headers['moe-appkey']    || '',
+        },
+        validateStatus: () => true,
       });
+      res.status(resp.status).json(resp.data);
+    } catch (err) {
+      res.status(502).json({ error: err.message });
     }
-    res.status(status).json(data);
-  }
-});
-
-// ─── Campaign Audit  /api/audit/search ───────────────────────────────────────
-// Body: { appId, apiKey, terms[], limit?, offset? }
-
-app.post("/api/audit/search", apiLimiter, async (req, res) => {
-  const { appId, apiKey, terms = [], limit = 50, offset = 0 } = req.body;
-  if (!appId || !apiKey) return missingCreds(res);
-  if (!Array.isArray(terms) || terms.length === 0) {
-    return res.status(400).json({ error: "Provide at least one search term." });
-  }
-
-  try {
-    const results = {};
-    for (const term of terms) {
-      const response = await axios.get(
-        `${MOE_API_BASE}/v1/${appId}/campaigns`,
-        {
-          headers: moeHeaders(appId, apiKey),
-          params:  { search: term, limit, offset },
-          timeout: 30000,
-        }
-      );
-      results[term] = response.data;
-    }
-    res.json(results);
-  } catch (err) {
-    res.status(err.response?.status || 500).json(
-      err.response?.data || { error: err.message }
-    );
-  }
-});
-
-// ─── Content Block Migration  /api/cb/* ──────────────────────────────────────
-// All routes: body must include { appId, apiKey, ...payload }
-
-// Search blocks in an env
-app.post("/api/cb/search", apiLimiter, async (req, res) => {
-  const { appId, apiKey, ...payload } = req.body;
-  if (!appId || !apiKey) return missingCreds(res);
-  try {
-    const response = await axios.post(
-      `${MOE_API_BASE}/v1/external/campaigns/content-blocks/search`,
-      payload,
-      { headers: moeHeaders(appId, apiKey), timeout: 30000 }
-    );
-    res.status(response.status).json(response.data);
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
-  }
-});
-
-// Fetch full content block details by IDs
-app.post("/api/cb/get-ids", apiLimiter, async (req, res) => {
-  const { appId, apiKey, ids = [], is_raw_content_required = true } = req.body;
-  if (!appId || !apiKey) return missingCreds(res);
-  try {
-    const response = await axios.post(
-      `${MOE_API_BASE}/v1/external/campaigns/content-blocks/get-by-ids`,
-      { ids, is_raw_content_required },
-      { headers: moeHeaders(appId, apiKey), timeout: 30000 }
-    );
-    res.status(response.status).json(response.data);
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
-  }
-});
-
-// Create a content block in target env
-app.post("/api/cb/create", apiLimiter, async (req, res) => {
-  const { appId, apiKey, ...payload } = req.body;
-  if (!appId || !apiKey) return missingCreds(res);
-  try {
-    const response = await axios.post(
-      `${MOE_API_BASE}/v1/external/campaigns/content-blocks`,
-      payload,
-      { headers: moeHeaders(appId, apiKey), timeout: 30000 }
-    );
-    res.status(response.status).json(response.data);
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
-  }
-});
-
-// ─── Email Template Builder Routes  /api/template/* ──────────────────────────
-// Credentials passed as x-app-id / x-api-key headers from the UI.
-
-const MOE_BASE          = "https://api-101.moengage.com";
-const BASE_TEMPLATE_EN  = "1775486412749";   // English base template ID
-const BASE_TEMPLATE_ES  = "1775486412749";   // Spanish — update if different
-
-function templateHeaders(req) {
-  const appId  = req.headers["x-app-id"]  || "";
-  const apiKey = req.headers["x-api-key"] || "";
-  return {
-    Authorization:  basicAuth(appId, apiKey),
-    "Content-Type": "application/json",
-    "MOE-APPID":    appId,
-  };
+  });
 }
 
-// Simple Jinja2-style variable substitution (server-side)
-function renderJinja(html, vars) {
-  let out = html;
-  // Replace {{ variable }} with value
-  out = out.replace(/{{\s*([\w]+)\s*}}/g, (_, key) =>
-    vars[key] !== undefined ? String(vars[key]) : ""
-  );
-  // Handle {% if variable %}...{% endif %} blocks
-  out = out.replace(/{%\s*if\s+([\w]+)\s*%}([\s\S]*?){%\s*endif\s*%}/g, (_, key, block) =>
-    vars[key] ? block : ""
-  );
-  return out;
+// These routes match what content_block_search.html calls directly
+app.post('/proxy',           apiLimiter, (req, res) =>
+  proxyMoeRequest(`${MOE_API_BASE}/v1/external/campaigns/content-blocks/search`, req, res));
+
+app.post('/proxy-get-ids',   apiLimiter, (req, res) =>
+  proxyMoeRequest(`${MOE_API_BASE}/v1/external/campaigns/content-blocks/get-by-ids`, req, res));
+
+app.post('/proxy-campaigns', apiLimiter, (req, res) =>
+  proxyMoeRequest(`${MOE_API_BASE}/core-services/v1/campaigns/search`, req, res));
+
+// ─── Content Block Migration Utility ──────────────────────────────────────────
+// cb_migrator.html passes source/target credentials in the request body
+// since it needs two separate environments simultaneously.
+
+async function cbProxy(targetPath, req, res, method = 'POST') {
+  const creds = credsFromHeaders(req) || credsFromBody(req, 'src') || credsFromBody(req, '');
+  if (!creds) return missingCreds(res);
+
+  const { appId, apiKey } = creds;
+  const url = `${MOE_API_BASE}${targetPath}`;
+
+  try {
+    const resp = await axios({
+      method,
+      url,
+      data:    req.body,
+      headers: moeHeaders(appId, apiKey),
+      validateStatus: () => true,
+    });
+    res.status(resp.status).json(resp.data);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
 }
 
-// GET /api/template/fetch-base?language=English
-// Fetches the base template HTML from MoEngage
-app.get("/api/template/fetch-base", apiLimiter, async (req, res) => {
-  const appId  = req.headers["x-app-id"];
-  const apiKey = req.headers["x-api-key"];
-  if (!appId || !apiKey) return missingCreds(res);
-
-  const lang       = req.query.language === "Spanish" ? "Spanish" : "English";
-  const templateId = lang === "Spanish" ? BASE_TEMPLATE_ES : BASE_TEMPLATE_EN;
-
-  try {
-    const response = await axios.post(
-      `${MOE_BASE}/v1.0/custom-templates/email/search`,
-      { page: 1, entries: 1, template_id: templateId },
-      { headers: templateHeaders(req), timeout: 30000 }
-    );
-    const template = response.data?.data?.[0];
-    if (!template) return res.status(404).json({ error: "Base template not found." });
-
-    // Decode email_content (MoEngage returns it encoded)
-    let html = template.basic_details?.email_content || "";
-    try { html = JSON.parse(`"${html.replace(/"/g, '\\"')}"`); } catch { /* use as-is */ }
-
-    res.json({ html, templateId });
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
-  }
-});
-
-// POST /api/template/preview
-// Render base template with provided variables server-side
-app.post("/api/template/preview", apiLimiter, async (req, res) => {
-  const appId  = req.headers["x-app-id"];
-  const apiKey = req.headers["x-api-key"];
-  if (!appId || !apiKey) return missingCreds(res);
-
-  const { templateVariables, language } = req.body;
-  if (!templateVariables) return res.status(400).json({ error: "templateVariables required." });
-
-  try {
-    // Fetch base template
-    const lang       = language === "Spanish" ? "Spanish" : "English";
-    const templateId = lang === "Spanish" ? BASE_TEMPLATE_ES : BASE_TEMPLATE_EN;
-    const response   = await axios.post(
-      `${MOE_BASE}/v1.0/custom-templates/email/search`,
-      { page: 1, entries: 1, template_id: templateId },
-      { headers: templateHeaders(req), timeout: 30000 }
-    );
-    let html = response.data?.data?.[0]?.basic_details?.email_content || "";
-    try { html = JSON.parse(`"${html.replace(/"/g, '\\"')}"`); } catch { /* use as-is */ }
-
-    const rendered = renderJinja(html, templateVariables);
-    res.json({ html: rendered });
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
-  }
-});
-
-// POST /api/template/create
-app.post("/api/template/create", apiLimiter, async (req, res) => {
-  const appId  = req.headers["x-app-id"];
-  const apiKey = req.headers["x-api-key"];
-  if (!appId || !apiKey) return missingCreds(res);
-
-  const { templateVariables, language, templateName, subject, userEmail, previewText } = req.body;
-  if (!templateVariables || !templateName || !subject || !userEmail) {
-    return res.status(400).json({ error: "templateVariables, templateName, subject, userEmail required." });
-  }
-
-  try {
-    // 1. Fetch base template
-    const lang       = language === "Spanish" ? "Spanish" : "English";
-    const templateId = lang === "Spanish" ? BASE_TEMPLATE_ES : BASE_TEMPLATE_EN;
-    const baseRes    = await axios.post(
-      `${MOE_BASE}/v1.0/custom-templates/email/search`,
-      { page: 1, entries: 1, template_id: templateId },
-      { headers: templateHeaders(req), timeout: 30000 }
-    );
-    let html = baseRes.data?.data?.[0]?.basic_details?.email_content || "";
-    try { html = JSON.parse(`"${html.replace(/"/g, '\\"')}"`); } catch { /* use as-is */ }
-
-    // 2. Render Jinja variables
-    const rendered = renderJinja(html, templateVariables);
-
-    // 3. Create template in MoEngage
-    const payload = {
-      basic_details: {
-        email_content: rendered,
-        subject,
-        thumbnail_url: "https://image-101.moengage.com/campaigns/preview/custom_templates/campaign_core/xNlgKdPK.png",
-        sender_name:   "T-Mobile",
-        preview_text:  previewText || "",
-      },
-      meta_info: {
-        communication_type: "INFORM",
-        created_by:         userEmail,
-        template_id:        templateName,
-        template_name:      templateName,
-        template_version:   "v1",
-      },
-    };
-
-    const createRes = await axios.post(
-      `${MOE_BASE}/v1.0/custom-templates/email`,
-      payload,
-      { headers: templateHeaders(req), timeout: 30000 }
-    );
-    res.status(createRes.status).json(createRes.data);
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
-  }
-});
-
-// POST /api/template/search  — find a template by template_id to get external_template_id
-app.post("/api/template/search", apiLimiter, async (req, res) => {
-  const appId  = req.headers["x-app-id"];
-  const apiKey = req.headers["x-api-key"];
-  if (!appId || !apiKey) return missingCreds(res);
-
-  try {
-    const response = await axios.post(
-      `${MOE_BASE}/v1.0/custom-templates/email/search`,
-      req.body,
-      { headers: templateHeaders(req), timeout: 30000 }
-    );
-    res.status(response.status).json(response.data);
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
-  }
-});
-
-// POST /api/template/update
-app.post("/api/template/update", apiLimiter, async (req, res) => {
-  const appId  = req.headers["x-app-id"];
-  const apiKey = req.headers["x-api-key"];
-  if (!appId || !apiKey) return missingCreds(res);
-
-  const { templateVariables, language, templateName, subject, userEmail, previewText, externalTemplateId } = req.body;
-  if (!templateVariables || !templateName || !subject || !userEmail || !externalTemplateId) {
-    return res.status(400).json({ error: "templateVariables, templateName, subject, userEmail, externalTemplateId required." });
-  }
-
-  try {
-    // 1. Fetch & render base template
-    const lang       = language === "Spanish" ? "Spanish" : "English";
-    const templateId = lang === "Spanish" ? BASE_TEMPLATE_ES : BASE_TEMPLATE_EN;
-    const baseRes    = await axios.post(
-      `${MOE_BASE}/v1.0/custom-templates/email/search`,
-      { page: 1, entries: 1, template_id: templateId },
-      { headers: templateHeaders(req), timeout: 30000 }
-    );
-    let html = baseRes.data?.data?.[0]?.basic_details?.email_content || "";
-    try { html = JSON.parse(`"${html.replace(/"/g, '\\"')}"`); } catch { /* use as-is */ }
-    const rendered = renderJinja(html, templateVariables);
-
-    // 2. Update template
-    const payload = {
-      external_template_id: externalTemplateId,
-      basic_details: {
-        email_content: rendered,
-        subject,
-        thumbnail_url: "https://image-101.moengage.com/campaigns/preview/custom_templates/campaign_core/xNlgKdPK.png",
-        sender_name:   "T-Mobile",
-        preview_text:  previewText || "",
-      },
-      meta_info: {
-        template_name: templateName,
-        updated_by:    userEmail,
-      },
-      update_campaigns:      true,
-      update_latest_version: true,
-    };
-
-    const updateRes = await axios.put(
-      `${MOE_BASE}/v1.0/custom-templates/email`,
-      payload,
-      { headers: templateHeaders(req), timeout: 30000 }
-    );
-    res.status(updateRes.status).json(updateRes.data);
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
-  }
-});
-
-
-// This single utility handles both modes via a tab switcher.
-// Credentials passed as headers: Authorization (Basic) + MOE-APPKEY
-
-function searchHeaders(req) {
-  return {
-    Authorization:  req.headers["authorization"] || "",
-    "Content-Type": "application/json",
-    "MOE-APPKEY":   req.headers["moe-appkey"] || req.headers["moe-appid"] || "",
-  };
-}
-
-// Content Block search (list/search all blocks)
-app.post("/proxy", apiLimiter, async (req, res) => {
-  try {
-    const response = await axios.post(
-      `${MOE_API_BASE}/v1/external/campaigns/content-blocks/search`,
-      req.body,
-      { headers: searchHeaders(req), timeout: 30000 }
-    );
-    res.status(response.status).json(response.data);
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
-  }
-});
-
-// Content Block get by IDs (fetch full content)
-app.post("/proxy-get-ids", apiLimiter, async (req, res) => {
-  try {
-    const response = await axios.post(
-      `${MOE_API_BASE}/v1/external/campaigns/content-blocks/get-by-ids`,
-      req.body,
-      { headers: searchHeaders(req), timeout: 30000 }
-    );
-    res.status(response.status).json(response.data);
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
-  }
-});
-
-// Campaign search (Email / SMS / Push across all campaigns)
-app.post("/proxy-campaigns", apiLimiter, async (req, res) => {
-  try {
-    const response = await axios.post(
-      `${MOE_API_BASE}/core-services/v1/campaigns/search`,
-      req.body,
-      { headers: searchHeaders(req), timeout: 30000 }
-    );
-    res.status(response.status).json(response.data);
-  } catch (err) {
-    res.status(err.response?.status || 500).json(err.response?.data || { error: err.message });
-  }
-});
-
-
-// Original proxy.js pattern: Authorization + MOE-APPKEY + X-Moe-Dc headers
-
-function legacyCbHeaders(req) {
-  return {
-    Authorization:  req.headers["authorization"]  || "",
-    "Content-Type": "application/json",
-    "MOE-APPKEY":   req.headers["moe-appkey"]     || req.headers["moe-appid"] || "",
-  };
-}
-
-function legacyDc(req) {
-  return req.headers["x-moe-dc"] || "101";
-}
-
-function legacyMissingAuth(req, res) {
-  if (!req.headers["authorization"]) {
-    res.status(400).json({ error: "Authorization header is required." });
-    return true;
-  }
-  return false;
-}
-
-app.post("/cb-search", apiLimiter, async (req, res) => {
-  if (legacyMissingAuth(req, res)) return;
-  const dc = legacyDc(req);
-  try {
-    const response = await axios.post(
-      `https://api-${dc}.moengage.com/v1/external/campaigns/content-blocks/search`,
-      req.body,
-      { headers: legacyCbHeaders(req), timeout: 30000 }
-    );
-    res.status(response.status).json(response.data);
-  } catch (err) { res.status(err.response?.status || 500).json(err.response?.data || { error: err.message }); }
-});
-
-app.post("/cb-get-ids", apiLimiter, async (req, res) => {
-  if (legacyMissingAuth(req, res)) return;
-  const dc = legacyDc(req);
-  try {
-    const response = await axios.post(
-      `https://api-${dc}.moengage.com/v1/external/campaigns/content-blocks/get-by-ids`,
-      req.body,
-      { headers: legacyCbHeaders(req), timeout: 30000 }
-    );
-    res.status(response.status).json(response.data);
-  } catch (err) { res.status(err.response?.status || 500).json(err.response?.data || { error: err.message }); }
-});
-
-app.post("/cb-create", apiLimiter, async (req, res) => {
-  if (legacyMissingAuth(req, res)) return;
-  const dc = legacyDc(req);
-  try {
-    const response = await axios.post(
-      `https://api-${dc}.moengage.com/v1/external/campaigns/content-blocks`,
-      req.body,
-      { headers: legacyCbHeaders(req), timeout: 30000 }
-    );
-    res.status(response.status).json(response.data);
-  } catch (err) { res.status(err.response?.status || 500).json(err.response?.data || { error: err.message }); }
-});
-
-app.post("/cb-update", apiLimiter, async (req, res) => {
-  if (legacyMissingAuth(req, res)) return;
-  const dc  = legacyDc(req);
-  const id  = req.headers["x-block-id"] || req.body.id;
-  if (!id) return res.status(400).json({ error: "Block ID required (x-block-id header or body.id)." });
-  try {
-    const response = await axios.put(
-      `https://api-${dc}.moengage.com/v1/external/campaigns/content-blocks/${id}`,
-      req.body,
-      { headers: legacyCbHeaders(req), timeout: 30000 }
-    );
-    res.status(response.status).json(response.data);
-  } catch (err) { res.status(err.response?.status || 500).json(err.response?.data || { error: err.message }); }
-});
-
-// ─── Token Auth + Flow Proxy ──────────────────────────────────────────────────
-app.use("/api/auth", tokenAuth.router);
-app.use("/api/flow", tokenAuth.flowProxy);
+app.post('/api/cb/search',  apiLimiter, (req, res) => cbProxy('/v1/external/campaigns/content-blocks/search',      req, res));
+app.post('/api/cb/get-ids', apiLimiter, (req, res) => cbProxy('/v1/external/campaigns/content-blocks/get-by-ids',  req, res));
+app.post('/api/cb/create',  apiLimiter, (req, res) => cbProxy('/v1/external/campaigns/content-blocks',             req, res));
+app.post('/api/cb/update',  apiLimiter, (req, res) => cbProxy('/v1/external/campaigns/content-blocks',             req, res, 'PUT'));
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
-app.get("/health", (_req, res) => {
+app.get('/health', (_req, res) => {
   res.json({
-    status: "ok",
-    dc: "101",
-    authMode: "per-request (no server-side credentials)",
+    status: 'ok',
+    service: 'moengage-tools',
+    dc: 'api-101.moengage.com',
     tools: [
-      { name: "Email Template Builder",        url: "/template-builder" },
-      { name: "Content Block & Campaign Search", url: "/content-block-search.html" },
-      { name: "Content Block Migration",        url: "/cb-migrator.html" },
-      { name: "Flow Action Nodes Review",       url: "/flow-review.html" },
-      { name: "Token Manager",                  url: "/token-manager.html" },
+      { name: 'Email Template Builder',   url: '/template-builder' },
+      { name: 'Content Block Search',     url: '/content-block-search.html' },
+      { name: 'Content Block Migration',  url: '/cb-migrator.html' },
+      { name: 'Flow Action Nodes Review', url: '/flow-review.html' },
+      { name: 'Token Manager',            url: '/token-manager.html' },
+      { name: 'User Attribute Updater',   url: '/user-attr-updater.html' },
     ],
   });
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`✅ MoEngage Tools running on port ${PORT}`);
-  console.log(`   DC fixed to         : 101`);
-  console.log(`   Auth mode           : per-request (no server-side credentials)`);
-  console.log(`   → Dashboard              : http://localhost:${PORT}`);
-  console.log(`   → Template Builder       : http://localhost:${PORT}/template-builder`);
-  console.log(`   → CB & Campaign Search   : http://localhost:${PORT}/content-block-search.html`);
-  console.log(`   → CB Migration           : http://localhost:${PORT}/cb-migrator.html`);
-  console.log(`   → Flow Review            : http://localhost:${PORT}/flow-review.html`);
-  console.log(`   → Token Manager          : http://localhost:${PORT}/token-manager.html`);
-  console.log(`   → Health                 : http://localhost:${PORT}/health`);
+  console.log('');
+  console.log('  ╔══════════════════════════════════════════════╗');
+  console.log('  ║        MoEngage Tools — Unified Server       ║');
+  console.log('  ╠══════════════════════════════════════════════╣');
+  console.log(`  ║  http://localhost:${PORT}                        ║`);
+  console.log('  ║  DC → api-101.moengage.com                   ║');
+  console.log('  ╠══════════════════════════════════════════════╣');
+  console.log('  ║  Tools:                                      ║');
+  console.log('  ║    /template-builder      Email Builder      ║');
+  console.log('  ║    /content-block-search  CB Search          ║');
+  console.log('  ║    /cb-migrator           CB Migration       ║');
+  console.log('  ║    /flow-review           Flow Review        ║');
+  console.log('  ║    /token-manager         Token Manager      ║');
+  console.log('  ║    /user-attr-updater     Attr Updater       ║');
+  console.log('  ╚══════════════════════════════════════════════╝');
+  console.log('');
 });
