@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MoEngage · User Attribute Updater</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --magenta: #E20074;
+    --magenta-light: #ff3399;
+    --magenta-faint: rgba(226,0,116,0.08);
+    --bg: #0d0d0f;
+    --surface: #141417;
+    --surface2: #1c1c21;
+    --surface3: #242429;
+    --border: rgba(255,255,255,0.08);
+    --border-magenta: rgba(226,0,116,0.3);
+    --text: #f0f0f5;
+    --text-dim: #888896;
+    --text-muted: #55555f;
+    --green: #00c78c;
+    --amber: #ffb100;
+    --red: #ff4d6a;
+    --radius: 8px;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --font-sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 14px; min-height: 100vh; }
+
+  .shell { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; }
+
+  /* Header */
+  .header { display: flex; align-items: center; gap: 14px; margin-bottom: 32px; }
+  .logo-pill { background: var(--magenta); color: #fff; font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.1em; padding: 4px 10px; border-radius: 4px; }
+  .header-title { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+  .dc-badge { margin-left: auto; background: var(--magenta-faint); border: 1px solid var(--border-magenta); color: var(--magenta); font-family: var(--font-mono); font-size: 10px; padding: 3px 9px; border-radius: 4px; }
+
+  /* Card */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+  .card-header { display: flex; align-items: center; gap: 10px; padding: 13px 18px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+  .step-badge { width: 22px; height: 22px; border-radius: 50%; background: var(--magenta); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-badge.done { background: var(--green); }
+  .step-badge.cfg  { background: var(--surface3); color: var(--text-dim); font-size: 14px; }
+  .card-title { font-size: 13px; font-weight: 600; }
+  .card-body { padding: 18px; }
+
+  /* Config saved indicator */
+  .cfg-saved { display:none; align-items:center; gap:6px; font-size:11px; font-family:var(--font-mono); color:var(--green); margin-left:auto; }
+  .cfg-saved.show { display:flex; }
+
+  /* Form */
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .field-row.triple { grid-template-columns: 1fr 1fr 1fr; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 11px; font-family: var(--font-mono); color: var(--text-dim); letter-spacing: 0.04em; text-transform: uppercase; }
+  input, select { background: var(--surface3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font-mono); font-size: 13px; padding: 9px 12px; outline: none; transition: border-color 0.15s; width: 100%; }
+  input:focus, select:focus { border-color: var(--magenta); }
+  input::placeholder { color: var(--text-muted); }
+  select option { background: #1c1c21; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; font-family: var(--font-sans); }
+  .btn-primary { background: var(--magenta); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--magenta-light); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-outline { background: transparent; border: 1px solid var(--border-magenta); color: var(--magenta); }
+  .btn-outline:hover:not(:disabled) { background: var(--magenta-faint); }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  /* Status */
+  .status-bar { display: none; align-items: center; gap: 8px; padding: 10px 14px; border-radius: var(--radius); font-size: 12px; font-family: var(--font-mono); margin-top: 12px; }
+  .status-bar.show { display: flex; }
+  .status-bar.loading { background: rgba(255,177,0,0.1); border: 1px solid rgba(255,177,0,0.25); color: var(--amber); }
+  .status-bar.success { background: rgba(0,199,140,0.1); border: 1px solid rgba(0,199,140,0.25); color: var(--green); }
+  .status-bar.error   { background: rgba(255,77,106,0.1); border: 1px solid rgba(255,77,106,0.25); color: var(--red); }
+  .spinner { width: 13px; height: 13px; border: 2px solid rgba(255,177,0,0.3); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Profile table */
+  .profile-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .profile-id { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+  .profile-id span { color: var(--magenta); font-weight: 600; }
+  .attr-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .attr-table th { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); background: var(--surface2); }
+  .attr-table td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: top; }
+  .attr-table tr:last-child td { border-bottom: none; }
+  .attr-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .attr-key { font-family: var(--font-mono); color: var(--magenta-light); white-space: nowrap; width: 220px; }
+  .attr-val { color: var(--text); word-break: break-all; }
+  .attr-val.null-val { color: var(--text-muted); font-style: italic; }
+
+  /* Update panel */
+  .update-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; margin-bottom: 10px; }
+  .attr-type-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .type-chip { font-size: 11px; font-family: var(--font-mono); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; transition: all 0.15s; background: transparent; }
+  .type-chip.active, .type-chip:hover { border-color: var(--magenta); color: var(--magenta); background: var(--magenta-faint); }
+
+  /* Pending */
+  .pending-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .pending-item { display: flex; align-items: center; justify-content: space-between; background: var(--surface3); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-family: var(--font-mono); font-size: 12px; }
+  .pending-key { color: var(--magenta-light); }
+  .pending-arrow { color: var(--text-muted); margin: 0 6px; }
+  .pending-val { color: var(--green); }
+  .pending-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 4px; }
+  .pending-remove:hover { color: var(--red); background: rgba(255,77,106,0.1); }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .section-label { font-size: 10px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 10px; }
+  .hint { font-size: 10px; font-family: var(--font-mono); color: var(--text-muted); margin-top: 3px; }
+  code { color: var(--magenta-light); }
+
+  pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 11px; font-family: var(--font-mono); color: var(--text-dim); white-space: pre-wrap; word-break: break-all; overflow-x: auto; margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="header">
+    <div class="logo-pill">T-MOBILE</div>
+    <div class="header-title">MoEngage · User Attribute Updater</div>
+    <div class="dc-badge">api-101.moengage.com</div>
+  </div>
+
+  <!-- Config -->
+  <div class="card">
+    <div class="card-header">
+      <div class="step-badge cfg">⚙</div>
+      <div class="card-title">Configuration</div>
+      <div class="cfg-saved" id="cfgSaved">✓ Saved</div>
+    </div>
+    <div class="card-body">
+      <div class="field-row">
+        <div class="field">
+          <label>App ID (Workspace ID)</label>
+          <input id="cfgAppId" type="text" placeholder="e.g. SPJUIVHAUP6GA3T6R89P77XZ" />
+        </div>
+        <div class="field">
+          <label>Data API Key</label>
+          <input id="cfgApiKey" type="password" placeholder="Your Data API Secret" />
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="saveConfig()">Save</button>
+    </div>
+  </div>
+
+  <!-- Step 1: Lookup -->
+  <div class="card">
+    <div class="card-header">
+      <div class="step-badge" id="step1Badge">1</div>
+      <div class="card-title">Lookup User</div>
+    </div>
+    <div class="card-body">
+      <div class="field-row">
+        <div class="field">
+          <label>Identifier Value</label>
+          <input id="lookupId" type="text" placeholder="e.g. 696453c4048ce85c77500095" />
+        </div>
+        <div class="field">
+          <label>Identifier Type</label>
+          <select id="lookupIdentType">
+            <option value="customer_id">customer_id</option>
+            <option value="id">id</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="fetchUser()">🔍 Fetch User</button>
+      <div class="status-bar" id="fetchStatus"></div>
+    </div>
+  </div>
+
+  <!-- Step 2: Profile -->
+  <div class="card" id="profileCard" style="display:none">
+    <div class="card-header">
+      <div class="step-badge done">✓</div>
+      <div class="card-title">User Profile</div>
+    </div>
+    <div class="card-body">
+      <div class="profile-header">
+        <div class="profile-id">customer_id: <span id="resolvedId">—</span></div>
+        <button class="btn btn-outline btn-sm" onclick="clearProfile()">Clear</button>
+      </div>
+      <div style="overflow-x:auto; border-radius:6px; border:1px solid var(--border);">
+        <table class="attr-table">
+          <thead><tr><th>Attribute Key</th><th>Current Value</th></tr></thead>
+          <tbody id="attrTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Update -->
+  <div class="card" id="updateCard" style="display:none">
+    <div class="card-header">
+      <div class="step-badge">2</div>
+      <div class="card-title">Update Attributes</div>
+    </div>
+    <div class="card-body">
+      <div class="section-label">Add attribute to update</div>
+      <div class="update-grid">
+        <div class="field">
+          <label>Attribute Key</label>
+          <input id="updKey" list="attrKeyList" placeholder="Select from list or type a custom key" />
+          <datalist id="attrKeyList"></datalist>
+          <span class="hint">Pick from fetched attrs <em>or</em> type any custom key (e.g. <code>Fiber_Market_Id</code>)</span>
+        </div>
+        <div class="field">
+          <label>New Value</label>
+          <input id="updVal" placeholder="string value" />
+        </div>
+        <div>
+          <button class="btn btn-outline" onclick="addPending()">+ Add</button>
+        </div>
+      </div>
+
+      <div class="attr-type-row">
+        <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);align-self:center;">Value type:</span>
+        <button class="type-chip active" onclick="setType(this,'string')">String</button>
+        <button class="type-chip" onclick="setType(this,'number')">Number</button>
+        <button class="type-chip" onclick="setType(this,'boolean')">Boolean</button>
+        <button class="type-chip" onclick="setType(this,'date')">Datetime</button>
+      </div>
+
+      <div id="pendingList" class="pending-list" style="display:none"></div>
+
+      <hr class="divider" />
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div id="updateSummary" style="font-size:12px;color:var(--text-dim);font-family:var(--font-mono);"></div>
+        <button class="btn btn-primary" id="updateBtn" onclick="submitUpdate()" disabled>💾 Push Update</button>
+      </div>
+      <div class="status-bar" id="updateStatus"></div>
+      <div id="payloadPreviewWrap" style="display:none">
+        <div class="section-label" style="margin-bottom:0;margin-top:14px;">Last sent payload</div>
+        <pre id="payloadPreview"></pre>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script>
+// ── State ──────────────────────────────────────────────────────────────
+let appId  = '';
+let apiKey = '';
+let resolvedCustomerId = null;
+let userAttributes     = {};
+let pendingUpdates     = {};
+let selectedType       = 'string';
+
+// ── Config ─────────────────────────────────────────────────────────────
+function saveConfig() {
+  appId  = document.getElementById('cfgAppId').value.trim();
+  apiKey = document.getElementById('cfgApiKey').value.trim();
+  if (!appId || !apiKey) { alert('Both App ID and API Key are required.'); return; }
+  document.getElementById('cfgSaved').classList.add('show');
+}
+
+function authHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'x-app-id':     appId,
+    'x-api-key':    apiKey,
+  };
+}
+
+// ── Fetch User ─────────────────────────────────────────────────────────
+async function fetchUser() {
+  if (!appId || !apiKey) { alert('Save your configuration first.'); return; }
+  const identifier = document.getElementById('lookupId').value.trim();
+  const identType  = document.getElementById('lookupIdentType').value;
+  if (!identifier) { alert('Enter an identifier value.'); return; }
+
+  setStatus('fetchStatus', 'loading', 'Fetching user from MoEngage…');
+
+  try {
+    const res  = await fetch('/api/user-updater/get-user', {
+      method:  'POST',
+      headers: authHeaders(),
+      body:    JSON.stringify({
+        data: { identifiers: [{ identifier_type: identType, identifier }] }
+      }),
+    });
+    const json = await res.json();
+
+    if (!res.ok) { setStatus('fetchStatus', 'error', `HTTP ${res.status}: ${errMsg(json)}`); return; }
+
+    const users = json?.data?.users || [];
+    if (users.length === 0) {
+      setStatus('fetchStatus', 'error', `User not found. (identifier_type="${identType}", identifier="${identifier}")`);
+      return;
+    }
+
+    const attrs = users[0].user_attributes || {};
+    userAttributes         = attrs;
+    resolvedCustomerId     = attrs.customer_id || attrs.uid || identifier;
+
+    setStatus('fetchStatus', 'success', `User found ✓  —  ${Object.keys(attrs).length} attributes returned`);
+    renderProfile(attrs);
+    document.getElementById('profileCard').style.display = '';
+    document.getElementById('updateCard').style.display  = '';
+    document.getElementById('step1Badge').textContent    = '✓';
+    document.getElementById('step1Badge').style.background = 'var(--green)';
+
+  } catch (err) {
+    setStatus('fetchStatus', 'error', `Request failed: ${err.message}`);
+  }
+}
+
+// ── Profile ─────────────────────────────────────────────────────────────
+function renderProfile(attrs) {
+  document.getElementById('resolvedId').textContent = resolvedCustomerId;
+  const tbody    = document.getElementById('attrTableBody');
+  const datalist = document.getElementById('attrKeyList');
+  tbody.innerHTML = datalist.innerHTML = '';
+
+  Object.entries(attrs).sort(([a],[b]) => a.localeCompare(b)).forEach(([k, v]) => {
+    const valStr = (v === null || v === undefined) ? '' : String(v);
+    const isNull = valStr === '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="attr-key">${esc(k)}</td><td class="attr-val${isNull ? ' null-val' : ''}">${isNull ? '(empty)' : esc(valStr)}</td>`;
+    tbody.appendChild(tr);
+    const opt = document.createElement('option'); opt.value = k; datalist.appendChild(opt);
+  });
+}
+
+function clearProfile() {
+  resolvedCustomerId = null; userAttributes = {}; pendingUpdates = {};
+  document.getElementById('profileCard').style.display  = 'none';
+  document.getElementById('updateCard').style.display   = 'none';
+  document.getElementById('step1Badge').textContent     = '1';
+  document.getElementById('step1Badge').style.background = 'var(--magenta)';
+  document.getElementById('fetchStatus').className      = 'status-bar';
+  renderPendingList();
+}
+
+// ── Value type ─────────────────────────────────────────────────────────
+function setType(el, type) {
+  document.querySelectorAll('.type-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active'); selectedType = type;
+  document.getElementById('updVal').placeholder = { string:'string value', number:'e.g. 42', boolean:'true or false', date:'2024-05-31T00:00:00Z' }[type];
+}
+
+// ── Pending ─────────────────────────────────────────────────────────────
+function addPending() {
+  const key = document.getElementById('updKey').value.trim();
+  const raw = document.getElementById('updVal').value.trim();
+  if (!key || raw === '') { alert('Both key and value are required.'); return; }
+  let val;
+  if (selectedType === 'number') { val = Number(raw); if (isNaN(val)) { alert(`"${raw}" is not a valid number.`); return; } }
+  else if (selectedType === 'boolean') { if (raw.toLowerCase() === 'true') val = true; else if (raw.toLowerCase() === 'false') val = false; else { alert('Boolean must be "true" or "false".'); return; } }
+  else { val = raw; }
+  pendingUpdates[key] = val;
+  document.getElementById('updKey').value = document.getElementById('updVal').value = '';
+  renderPendingList();
+}
+
+function removePending(key) { delete pendingUpdates[key]; renderPendingList(); }
+
+function renderPendingList() {
+  const container = document.getElementById('pendingList');
+  const btn       = document.getElementById('updateBtn');
+  const summary   = document.getElementById('updateSummary');
+  const entries   = Object.entries(pendingUpdates);
+  if (!entries.length) { container.style.display = 'none'; container.innerHTML = ''; btn.disabled = true; summary.textContent = ''; return; }
+  container.style.display = 'flex';
+  container.innerHTML = entries.map(([k, v]) => `
+    <div class="pending-item">
+      <div><span class="pending-key">${esc(k)}</span><span class="pending-arrow">←</span><span class="pending-val">${esc(String(v))}</span><span style="color:var(--text-muted);font-size:10px;margin-left:8px;">[${typeof v}]</span></div>
+      <button class="pending-remove" onclick="removePending(${JSON.stringify(k)})">✕</button>
+    </div>`).join('');
+  btn.disabled = false;
+  summary.textContent = `${entries.length} attribute${entries.length > 1 ? 's' : ''} queued`;
+}
+
+// ── Submit ─────────────────────────────────────────────────────────────
+async function submitUpdate() {
+  if (!resolvedCustomerId) { alert('No user resolved.'); return; }
+  if (!Object.keys(pendingUpdates).length) { alert('No updates queued.'); return; }
+
+  const payload = { type: 'customer', customer_id: resolvedCustomerId, attributes: { ...pendingUpdates } };
+  document.getElementById('payloadPreviewWrap').style.display = '';
+  document.getElementById('payloadPreview').textContent = JSON.stringify(payload, null, 2);
+  setStatus('updateStatus', 'loading', 'Sending update to MoEngage…');
+
+  try {
+    const res  = await fetch('/api/user-updater/update-user', {
+      method:  'POST',
+      headers: authHeaders(),
+      body:    JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (res.ok && json.status === 'success') {
+      setStatus('updateStatus', 'success', `Accepted ✓  request_id: ${json.request_id || '—'}  (processed asynchronously)`);
+      Object.assign(userAttributes, pendingUpdates);
+      renderProfile(userAttributes);
+      pendingUpdates = {}; renderPendingList();
+    } else {
+      setStatus('updateStatus', 'error', `HTTP ${res.status}: ${errMsg(json)}`);
+    }
+  } catch (err) {
+    setStatus('updateStatus', 'error', `Request failed: ${err.message}`);
+  }
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+function setStatus(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = `status-bar show ${type}`;
+  el.innerHTML = type === 'loading' ? `<div class="spinner"></div><span>${msg}</span>` : `<span>${msg}</span>`;
+}
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function errMsg(j) { if (!j) return 'Unknown error'; if (typeof j.error === 'string') return j.error; if (j.error?.message) return j.error.message; return JSON.stringify(j); }
+</script>
+</body>
+</html>
