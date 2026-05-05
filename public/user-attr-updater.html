@@ -346,7 +346,7 @@ function setType(el, type) {
 function addPending() {
   const key = document.getElementById('updKey').value.trim();
   const raw = document.getElementById('updVal').value.trim();
-  if (!key || raw === '') { alert('Both key and value are required.'); return; }
+  if (!key === '') { alert('Field to be updated is required.'); return; }
   let val;
   if (selectedType === 'number') { val = Number(raw); if (isNaN(val)) { alert(`"${raw}" is not a valid number.`); return; } }
   else if (selectedType === 'boolean') { if (raw.toLowerCase() === 'true') val = true; else if (raw.toLowerCase() === 'false') val = false; else { alert('Boolean must be "true" or "false".'); return; } }
