@@ -18,7 +18,6 @@ const MOE_API_BASE = 'https://api-101.moengage.com';
 
 userManager.loadUsers();
 
-// ─── Session Store ────────────────────────────────────────────────────────────
 const sessions    = new Map();
 const SESSION_TTL = 8 * 60 * 60 * 1000;
 
@@ -38,7 +37,6 @@ function getSession(req) {
   return sess;
 }
 
-// ─── Login Page ───────────────────────────────────────────────────────────────
 const LOGIN_PAGE = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -86,11 +84,9 @@ const LOGIN_PAGE = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// ─── CSP / Security Headers ───────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
@@ -106,14 +102,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── Rate Limiter ─────────────────────────────────────────────────────────────
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, max: 100,
   standardHeaders: true, legacyHeaders: false,
   message: { error: 'Rate limit reached.', retryAfter: 60 },
 });
 
-// ─── Auth Middleware ──────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   const open = ['/login', '/logout', '/health'];
   if (open.some(p => req.path === p)) return next();
@@ -126,7 +120,6 @@ app.use((req, res, next) => {
   res.redirect('/login');
 });
 
-// ─── Tool Access Middleware ───────────────────────────────────────────────────
 app.use((req, res, next) => {
   if (!toolsReg.isGatedRoute(req.path)) return next();
   const sess = getSession(req);
@@ -142,9 +135,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── Login / Logout ───────────────────────────────────────────────────────────
 app.use('/login', express.urlencoded({ extended: false }));
-
 app.get('/login', (_req, res) => { res.setHeader('Content-Type', 'text/html'); res.send(LOGIN_PAGE); });
 
 app.post('/login', async (req, res) => {
@@ -168,7 +159,6 @@ app.get('/logout', (req, res) => {
   res.redirect('/login');
 });
 
-// ─── API: My Tools ────────────────────────────────────────────────────────────
 app.get('/api/my-tools', (req, res) => {
   const sess = getSession(req);
   if (!sess) return res.status(401).json({ error: 'Unauthorised' });
@@ -181,7 +171,6 @@ app.get('/api/my-tools', (req, res) => {
   res.json({ tools, isAdmin: user.isAdmin, displayName: user.displayName || user.username });
 });
 
-// ─── Admin Routes ─────────────────────────────────────────────────────────────
 function requireAdmin(req, res, next) {
   const sess = getSession(req);
   if (!sess) return res.status(401).json({ error: 'Unauthorised' });
@@ -230,7 +219,6 @@ app.post('/admin/users/:username/reset-link', requireAdmin, async (req, res) => 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── Password Reset ───────────────────────────────────────────────────────────
 app.use('/reset-password', express.urlencoded({ extended: false }));
 app.get('/reset-password', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'reset-password.html')));
 
@@ -276,11 +264,10 @@ function missingCreds(res) {
   return res.status(401).json({ error: 'Missing credentials. Provide x-app-id and x-api-key headers.' });
 }
 
-// ─── User Attribute Updater (inlined) ────────────────────────────────────────
+// ─── User Attribute Updater ───────────────────────────────────────────────────
 function userUpdaterLog(label, method, url, body, status, response) {
   const ts = new Date().toISOString().replace('T', ' ').slice(0, 23);
-  console.log(`\n${'─'.repeat(60)}`);
-  console.log(`[${ts}] ${label}  ${method} ${url}`);
+  console.log(`\n${'─'.repeat(60)}\n[${ts}] ${label}  ${method} ${url}`);
   console.log('  BODY:', JSON.stringify(body, null, 2));
   console.log(`[${ts}] HTTP ${status}:`, JSON.stringify(response, null, 2));
   console.log('─'.repeat(60) + '\n');
@@ -352,13 +339,121 @@ app.post('/api/cb/get-ids', apiLimiter, (req, res) => cbProxy('/v1/external/camp
 app.post('/api/cb/create',  apiLimiter, (req, res) => cbProxy('/v1/external/campaigns/content-blocks',             req, res));
 app.post('/api/cb/update',  apiLimiter, (req, res) => cbProxy('/v1/external/campaigns/content-blocks',             req, res, 'PUT'));
 
+// ─── Email Template Builder ───────────────────────────────────────────────────
+const BASE_TEMPLATE_EN = process.env.BASE_TEMPLATE_EN || 'PostpaidServiceSelfServeTemplateEN';
+const BASE_TEMPLATE_ES = process.env.BASE_TEMPLATE_ES || '1778097498159';
+
+function templateHeaders(req) {
+  const appId  = (req.headers['x-app-id']  || '').trim();
+  const apiKey = (req.headers['x-api-key'] || '').trim();
+  return moeHeaders(appId, apiKey);
+}
+
+function renderJinja(html, vars) {
+  let out = html;
+  out = out.replace(/{{\s*([\w]+)\s*}}/g, (_, k) => vars[k] !== undefined ? String(vars[k]) : '');
+  out = out.replace(/{%\s*if\s+([\w]+)\s*%}([\s\S]*?){%\s*endif\s*%}/g, (_, k, block) => vars[k] ? block : '');
+  return out;
+}
+
+async function fetchBaseTemplate(req, language, baseTemplateName) {
+  const appId  = (req.headers['x-app-id']  || '').trim();
+  const apiKey = (req.headers['x-api-key'] || '').trim();
+  const name   = baseTemplateName || (language === 'Spanish' ? BASE_TEMPLATE_ES : BASE_TEMPLATE_EN);
+
+  // Try by template_name first, fall back to template_id (numeric)
+  const isNumeric = /^\d+$/.test(name);
+  const body = isNumeric
+    ? { page: 1, entries: 1, template_id: name }
+    : { page: 1, entries: 50, template_name: name };
+
+  const resp = await axios.post(
+    `${MOE_API_BASE}/v1.0/custom-templates/email/search`,
+    body,
+    { headers: moeHeaders(appId, apiKey), validateStatus: () => true }
+  );
+
+  const list = resp.data?.data || [];
+  const template = isNumeric
+    ? list[0]
+    : list.find(t => t.basic_details?.template_id === name || t.meta_info?.template_id === name) || list[0];
+
+  if (!template) throw new Error(`Base template not found: ${name}`);
+  return template;
+}
+
+// POST /api/template/search
+app.post('/api/template/search', apiLimiter, async (req, res) => {
+  const appId  = (req.headers['x-app-id']  || '').trim();
+  const apiKey = (req.headers['x-api-key'] || '').trim();
+  if (!appId || !apiKey) return missingCreds(res);
+  try {
+    const resp = await axios.post(`${MOE_API_BASE}/v1.0/custom-templates/email/search`, req.body, { headers: moeHeaders(appId, apiKey), validateStatus: () => true });
+    res.status(resp.status).json(resp.data);
+  } catch (err) { res.status(502).json({ error: err.message }); }
+});
+
+// POST /api/template/preview
+app.post('/api/template/preview', apiLimiter, async (req, res) => {
+  const appId = (req.headers['x-app-id'] || '').trim();
+  if (!appId) return missingCreds(res);
+  const { templateVariables, language, baseTemplateName } = req.body;
+  try {
+    const template = await fetchBaseTemplate(req, language, baseTemplateName);
+    let html = template.basic_details?.email_content || '';
+    const rendered = renderJinja(html, templateVariables || {});
+    res.json({ html: rendered });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/template/create
+app.post('/api/template/create', apiLimiter, async (req, res) => {
+  const appId  = (req.headers['x-app-id']  || '').trim();
+  const apiKey = (req.headers['x-api-key'] || '').trim();
+  if (!appId || !apiKey) return missingCreds(res);
+  const { templateVariables, language, templateName, subject, userEmail, previewText, baseTemplateName } = req.body;
+  if (!templateName || !subject || !userEmail) return res.status(400).json({ error: 'templateName, subject, userEmail required.' });
+  try {
+    const template = await fetchBaseTemplate(req, language, baseTemplateName);
+    let html = template.basic_details?.email_content || '';
+    const rendered = renderJinja(html, templateVariables || {});
+    const payload = {
+      basic_details: { email_content: rendered, subject, sender_name: 'T-Mobile', preview_text: previewText || '' },
+      meta_info: { communication_type: 'INFORM', created_by: userEmail, template_id: templateName, template_name: templateName, template_version: 'v1' },
+    };
+    const resp = await axios.post(`${MOE_API_BASE}/v1.0/custom-templates/email`, payload, { headers: moeHeaders(appId, apiKey), validateStatus: () => true });
+    res.status(resp.status).json(resp.data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/template/update
+app.post('/api/template/update', apiLimiter, async (req, res) => {
+  const appId  = (req.headers['x-app-id']  || '').trim();
+  const apiKey = (req.headers['x-api-key'] || '').trim();
+  if (!appId || !apiKey) return missingCreds(res);
+  const { templateVariables, language, templateName, subject, userEmail, previewText, externalTemplateId, baseTemplateName } = req.body;
+  if (!templateName || !subject || !userEmail || !externalTemplateId) return res.status(400).json({ error: 'templateName, subject, userEmail, externalTemplateId required.' });
+  try {
+    const template = await fetchBaseTemplate(req, language, baseTemplateName);
+    let html = template.basic_details?.email_content || '';
+    const rendered = renderJinja(html, templateVariables || {});
+    const payload = {
+      external_template_id: externalTemplateId,
+      basic_details: { email_content: rendered, subject, sender_name: 'T-Mobile', preview_text: previewText || '' },
+      meta_info: { template_name: templateName, updated_by: userEmail },
+      update_campaigns: true, update_latest_version: true,
+    };
+    const resp = await axios.put(`${MOE_API_BASE}/v1.0/custom-templates/email`, payload, { headers: moeHeaders(appId, apiKey), validateStatus: () => true });
+    res.status(resp.status).json(resp.data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({
   status: 'ok', service: 'moengage-tools', dc: 'api-101.moengage.com',
   tools: toolsReg.getAll().map(t => ({ name: t.name, url: t.url })),
 }));
 
-// ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n  MoEngage Tools running on http://localhost:${PORT}\n`);
 });
